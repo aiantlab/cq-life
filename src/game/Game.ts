@@ -102,7 +102,7 @@ export class Game {
     this.hud.hideTitle();
     this.canvas.requestPointerLock();
     this.last = performance.now();
-    this.hud.showToast('角色已就位 — 第三人称可见 · 北滨路行人/车流已加载', 4);
+    this.hud.showToast('Worldfolk方法北滨 · 第三人称+行人车流 · 小地图已加载', 4);
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -181,6 +181,9 @@ export class Game {
 
     if (this.world.agents) {
       this.world.agents.update(dt, this.player.position.x, this.player.position.z);
+    }
+    if (this.world.minimap) {
+      this.world.minimap.update(this.player.position.x, this.player.position.z, this.player.yaw);
     }
 
     this.state.mode = this.player.mode;

@@ -9,10 +9,13 @@ export interface BeibinExtract {
     height?: number;
     use: string;
     footprint: number[][];
+    name?: string;
   }>;
   water: Array<{ id: string; name?: string; ring: number[][] }>;
   pois: Array<{ id: string; name: string; kind: string; x: number; z: number }>;
   attribution?: string;
+  worldfolk_notes?: string;
+  version?: number;
 }
 
 export interface MapMeshResult {
@@ -25,9 +28,12 @@ export interface MapMeshResult {
   sidewalkPaths: Array<{ x: number; z: number }[]>;
   roadPaths: Array<{ x: number; z: number }[]>;
   attribution: string;
+  roads: BeibinExtract['roads'];
+  waterRing?: number[][];
 }
 
-function ribbonGeometry(coords: number[][], width: number): THREE.BufferGeometry {
+/** Worldfolk roadStrip-style ribbon: centerline → left/right edge via segment normals. */
+function ribbonGeometry(coords: number[][], width: number, y = 0.03): THREE.BufferGeometry {
   const half = width / 2;
   const left: THREE.Vector3[] = [];
   const right: THREE.Vector3[] = [];
@@ -55,7 +61,7 @@ function ribbonGeometry(coords: number[][], width: number): THREE.BufferGeometry
   for (let i = 0; i < left.length; i++) {
     if (i > 0) dist += left[i].distanceTo(left[i - 1]);
     const u = dist * 0.15;
-    positions.push(left[i].x, 0.03, left[i].z, right[i].x, 0.03, right[i].z);
+    positions.push(left[i].x, y, left[i].z, right[i].x, y, right[i].z);
     uvs.push(0, u, 1, u);
     if (i > 0) {
       const a = (i - 1) * 2;
@@ -70,6 +76,28 @@ function ribbonGeometry(coords: number[][], width: number): THREE.BufferGeometry
   return geo;
 }
 
+/** Offset a centerline laterally by metres (Worldfolk offsetMetres role). */
+function offsetCoords(coords: number[][], lateral: number): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < coords.length; i++) {
+    const [x, z] = coords[i];
+    let dx = 0;
+    let dz = 1;
+    if (i < coords.length - 1) {
+      dx = coords[i + 1][0] - x;
+      dz = coords[i + 1][1] - z;
+    } else if (i > 0) {
+      dx = x - coords[i - 1][0];
+      dz = z - coords[i - 1][1];
+    }
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = -dz / len;
+    const nz = dx / len;
+    out.push([x + nx * lateral, z + nz * lateral]);
+  }
+  return out;
+}
+
 function footprintMesh(
   fp: number[][],
   height: number,
@@ -78,18 +106,15 @@ function footprintMesh(
 ): THREE.Mesh {
   const shape = new THREE.Shape();
   fp.forEach(([x, z], i) => {
-    // Shape XY → after rotateX(-90°), Y maps to world -Z; feed -z so world Z matches.
     if (i === 0) shape.moveTo(x, -z);
     else shape.lineTo(x, -z);
   });
   shape.closePath();
   const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, steps: 1 });
-  // Extrude in +Y by rotating
   geo.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  // collider AABB
   geo.computeBoundingBox();
   if (geo.boundingBox) colliders.push(geo.boundingBox.clone());
   return mesh;
@@ -142,13 +167,58 @@ function addWindows(
   }
 }
 
+function addLaneMarkings(group: THREE.Group, coords: number[][], roadWidth: number) {
+  // Worldfolk markedClasses center line — dashed white on primary
+  const markMat = new THREE.MeshStandardMaterial({
+    color: 0xf2f4f0,
+    emissive: 0xdde2d8,
+    emissiveIntensity: 0.15,
+    roughness: 0.7,
+  });
+  for (let i = 1; i < coords.length; i++) {
+    const [x0, z0] = coords[i - 1];
+    const [x1, z1] = coords[i];
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    if (len < 2) continue;
+    const segs = Math.max(1, Math.floor(len / 4.5));
+    for (let s = 0; s < segs; s++) {
+      if (s % 2 === 1) continue;
+      const t0 = s / segs;
+      const t1 = Math.min(1, (s + 0.45) / segs);
+      const ax = x0 + (x1 - x0) * t0;
+      const az = z0 + (z1 - z0) * t0;
+      const bx = x0 + (x1 - x0) * t1;
+      const bz = z0 + (z1 - z0) * t1;
+      const dash = ribbonGeometry(
+        [
+          [ax, az],
+          [bx, bz],
+        ],
+        0.18,
+        0.045,
+      );
+      group.add(new THREE.Mesh(dash, markMat));
+    }
+  }
+  // edge lines
+  for (const side of [-1, 1]) {
+    const edge = offsetCoords(coords, side * (roadWidth / 2 - 0.35));
+    const edgeMesh = new THREE.Mesh(ribbonGeometry(edge, 0.14, 0.044), markMat);
+    group.add(edgeMesh);
+  }
+}
+
 export async function loadBeibinExtract(): Promise<BeibinExtract> {
   const res = await fetch('./map/beibin-extract.json');
   if (!res.ok) throw new Error('beibin-extract.json missing');
   return res.json();
 }
 
-/** Worldfolk-style: polylines → road ribbons, footprints → extruded buildings. */
+/**
+ * Worldfolk-method city mesh for Beibin:
+ * GeoJSON-like roads → asphalt + pavement strips (class widths) + markings;
+ * footprints → extrusions; sidewalks for agents.
+ */
 export function buildMapFromExtract(extract: BeibinExtract, parent: THREE.Object3D): MapMeshResult {
   const group = new THREE.Group();
   group.name = 'osmMap';
@@ -163,98 +233,121 @@ export function buildMapFromExtract(extract: BeibinExtract, parent: THREE.Object
   const roadPaths: Array<{ x: number; z: number }[]> = [];
 
   const asphalt = makeWetAsphalt();
-  asphalt.map && (asphalt.map.anisotropy = 8);
+  if (asphalt.map) asphalt.map.anisotropy = 8;
   roadMats.push(asphalt);
   const concrete = makeConcrete();
   const mosaic = makeMosaic();
   const plaster = makePlaster('#d9d2c6');
   const plasterDark = makePlaster('#c2b8a8');
   const brick = makeBrick('#7a5648');
+  const pavingMat = new THREE.MeshStandardMaterial({
+    color: 0x969893,
+    roughness: 0.92,
+    metalness: 0.02,
+  });
 
-  // Roads
   for (const road of extract.roads) {
-    const geo = ribbonGeometry(road.coords, road.width);
-    const mesh = new THREE.Mesh(geo, asphalt);
-    mesh.receiveShadow = true;
-    group.add(mesh);
+    const cls = road.highway || 'residential';
+    const isPath = cls === 'path' || cls === 'pedestrian';
+    const width = road.width;
+
+    // asphalt (or path paving)
+    const surface = new THREE.Mesh(
+      ribbonGeometry(road.coords, width, isPath ? 0.04 : 0.03),
+      isPath ? pavingMat : asphalt,
+    );
+    surface.receiveShadow = true;
+    group.add(surface);
     roadPaths.push(road.coords.map(([x, z]) => ({ x, z })));
 
-    // Sidewalks / bike lanes feel
-    if (road.highway === 'primary') {
-      const walkL = ribbonGeometry(road.coords, 3.2);
-      // offset approx by rebuilding with wider then... simple parallel strips
-      const sw = new THREE.Mesh(
-        ribbonGeometry(
-          road.coords.map(([x, z]) => [x, z - road.width / 2 - 2.0]),
-          3.0,
-        ),
-        concrete,
-      );
-      sw.receiveShadow = true;
-      group.add(sw);
-      const sw2 = new THREE.Mesh(
-        ribbonGeometry(
-          road.coords.map(([x, z]) => [x, z + road.width / 2 + 2.0]),
-          3.0,
-        ),
-        concrete,
-      );
-      sw2.receiveShadow = true;
-      group.add(sw2);
-      sidewalkPaths.push(road.coords.map(([x, z]) => ({ x, z: z - road.width / 2 - 2.0 })));
-      sidewalkPaths.push(road.coords.map(([x, z]) => ({ x, z: z + road.width / 2 + 2.0 })));
+    // Worldfolk pavement strips: wider corridor around asphalt (not Accra skin — class-based)
+    if (!isPath && cls !== 'service') {
+      const paveWidth = width + 2.4;
+      const pavement = new THREE.Mesh(ribbonGeometry(road.coords, paveWidth, 0.02), pavingMat);
+      pavement.receiveShadow = true;
+      group.add(pavement);
+    }
 
-      // Street lamps along primary
-      for (let i = 0; i < road.coords.length; i += 1) {
-        if (i % 1 !== 0) continue;
-        const [x, z] = road.coords[i];
-        for (const side of [-1, 1]) {
-          const lx = x;
-          const lz = z + side * (road.width / 2 + 1.2);
-          const pole = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.08, 0.1, 6.5, 8),
-            new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.65, roughness: 0.35 }),
-          );
-          pole.position.set(lx, 3.25, lz);
-          group.add(pole);
-          const light = new THREE.PointLight(0xffd9a0, 0, 24, 2);
-          light.position.set(lx, 6.4, lz);
-          group.add(light);
-          lamps.push(light);
-        }
+    if (cls === 'primary' || cls === 'tertiary' || cls === 'secondary') {
+      // dedicated sidewalk ribbons offset by normals (not crude z-only)
+      const swOff = width / 2 + 2.0;
+      for (const side of [-1, 1]) {
+        const swCoords = offsetCoords(road.coords, side * swOff);
+        const sw = new THREE.Mesh(ribbonGeometry(swCoords, 3.0, 0.05), concrete);
+        sw.receiveShadow = true;
+        group.add(sw);
+        sidewalkPaths.push(swCoords.map(([x, z]) => ({ x, z })));
       }
 
-      // Center median
-      const median = new THREE.Mesh(
-        ribbonGeometry(road.coords, 1.1),
-        new THREE.MeshStandardMaterial({ color: 0x3a6b45, roughness: 0.85 }),
-      );
-      median.position.y = 0.04;
-      group.add(median);
+      if (cls === 'primary') {
+        addLaneMarkings(group, road.coords, width);
 
-      // Road name sign
-      const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(3.2, 0.7, 0.12),
-        new THREE.MeshStandardMaterial({
-          color: 0x1f6b45,
-          emissive: 0x2f8f5c,
-          emissiveIntensity: 0.35,
-        }),
-      );
-      const mid = road.coords[Math.floor(road.coords.length / 2)];
-      sign.position.set(mid[0], 3.2, mid[1] - road.width / 2 - 3.5);
-      group.add(sign);
+        const median = new THREE.Mesh(
+          ribbonGeometry(road.coords, 1.1, 0.055),
+          new THREE.MeshStandardMaterial({ color: 0x3a6b45, roughness: 0.85 }),
+        );
+        group.add(median);
+
+        for (let i = 0; i < road.coords.length; i++) {
+          const [x, z] = road.coords[i];
+          for (const side of [-1, 1]) {
+            const off = offsetCoords(
+              [
+                [x, z],
+                [x + 0.01, z],
+              ],
+              side * (width / 2 + 1.2),
+            )[0];
+            const lx = off[0];
+            const lz = off[1];
+            const pole = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.08, 0.1, 6.5, 8),
+              new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.65, roughness: 0.35 }),
+            );
+            pole.position.set(lx, 3.25, lz);
+            group.add(pole);
+            const light = new THREE.PointLight(0xffd9a0, 0, 24, 2);
+            light.position.set(lx, 6.4, lz);
+            group.add(light);
+            lamps.push(light);
+          }
+        }
+
+        // Chinese road name plate
+        if (road.name) {
+          const sign = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(3.2, road.name.length * 0.55), 0.7, 0.12),
+            new THREE.MeshStandardMaterial({
+              color: 0x1f6b45,
+              emissive: 0x2f8f5c,
+              emissiveIntensity: 0.35,
+            }),
+          );
+          const mid = road.coords[Math.floor(road.coords.length / 2)];
+          const plate = offsetCoords(
+            [
+              mid,
+              [mid[0] + 1, mid[1]],
+            ],
+            -(width / 2 + 3.5),
+          )[0];
+          sign.position.set(plate[0], 3.2, plate[1]);
+          group.add(sign);
+        }
+      }
+    } else {
+      // residential / service — single sidewalk for peds
+      const swCoords = offsetCoords(road.coords, road.width / 2 + 1.6);
+      sidewalkPaths.push(swCoords.map(([x, z]) => ({ x, z })));
     }
   }
 
-  // Buildings from footprints
   for (const b of extract.buildings) {
     const h = b.height ?? b.levels * 3.1;
     const mat =
       b.use === 'commercial' ? (Math.random() > 0.5 ? plasterDark : brick) : Math.random() > 0.4 ? mosaic : plaster;
     const mesh = footprintMesh(b.footprint, h, mat, colliders);
     group.add(mesh);
-    // Approximate center/size for windows
     let minX = Infinity;
     let maxX = -Infinity;
     let minZ = Infinity;
@@ -301,5 +394,7 @@ export function buildMapFromExtract(extract: BeibinExtract, parent: THREE.Object
     sidewalkPaths,
     roadPaths,
     attribution: extract.attribution ?? '© OpenStreetMap contributors',
+    roads: extract.roads,
+    waterRing: extract.water?.[0]?.ring,
   };
 }

@@ -4,6 +4,12 @@ import { makeConcrete } from './textures';
 import { BEIBIN } from './ground';
 import { loadBeibinExtract, buildMapFromExtract } from './mapmesh';
 import { createAgentSystem, type AgentSystem } from './agents';
+import {
+  loadWorldfolkBundle,
+  addPlaceLabels,
+  createBeibinMiniMap,
+  type MiniMapHandle,
+} from './worldfolk';
 import type { Interactable } from './types';
 
 export interface BeibinExtras {
@@ -18,6 +24,7 @@ export interface BeibinExtras {
   interactables: Interactable[];
   agents: AgentSystem;
   attribution: string;
+  minimap: MiniMapHandle;
 }
 
 export function makeBicycle(): THREE.Group {
@@ -50,22 +57,29 @@ export function makeBicycle(): THREE.Group {
 }
 
 /**
- * Worldfolk-style Beibin: OSM extract → ribbons/footprints, then gameplay POIs,
- * river reflector, and inhabited agents (peds + traffic).
+ * Worldfolk-method Beibin city building (not Accra skin-swap):
+ * OSM-grounded extract + beibin-v1 manifest/streets/places → 3D ribbons/footprints,
+ * named labels, canvas minimap, river, gameplay POIs, inhabited agents.
  */
 export async function buildBeibinRoad(
   parent: THREE.Object3D,
   onRent: () => void,
   onReturn: () => void,
 ): Promise<BeibinExtras> {
-  const extract = await loadBeibinExtract();
+  const [extract, bundle] = await Promise.all([loadBeibinExtract(), loadWorldfolkBundle()]);
   const map = buildMapFromExtract(extract, parent);
+  addPlaceLabels(parent, bundle.places, bundle.streets);
+
+  const attribution =
+    bundle.manifest.attribution || map.attribution || '© OpenStreetMap contributors · ODbL 1.0';
+
+  const minimap = createBeibinMiniMap(map.roads, bundle.places, map.waterRing);
+  minimap.setAttribution(attribution);
 
   const interactables: Interactable[] = [];
   const concrete = makeConcrete();
   const rail = new THREE.MeshStandardMaterial({ color: 0xb8c0c8, metalness: 0.55, roughness: 0.4 });
 
-  // Promenade + river (嘉陵江) with reflections — real-scale water body south of Beibin
   const promo = new THREE.Mesh(
     new THREE.PlaneGeometry(190, 9),
     new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.28, metalness: 0.25 }),
@@ -108,7 +122,6 @@ export async function buildBeibinRoad(
   waterTint.position.set(0, -1.25, BEIBIN.riverZ);
   parent.add(waterTint);
 
-  // Embankments L/R of bridge gap
   for (const z of [BEIBIN.riverZ - BEIBIN.riverHalfDepth + 1.5, BEIBIN.riverZ + BEIBIN.riverHalfDepth - 1.5]) {
     for (const x of [-56, 56]) {
       const bank = new THREE.Mesh(new THREE.BoxGeometry(88, 2.5, 3.2), concrete);
@@ -121,7 +134,6 @@ export async function buildBeibinRoad(
     }
   }
 
-  // Bike rack POI
   const bikeRack = new THREE.Group();
   bikeRack.position.set(-18, 0, 57.5);
   parent.add(bikeRack);
@@ -163,7 +175,7 @@ export async function buildBeibinRoad(
     },
     {
       id: 'beibin-hint',
-      label: '北滨路 · 有行人车流 · 可骑行 / 向南过桥可选南滨',
+      label: '北滨路 · OSM 道路网 + 地名 · 行人车流 · 可骑行',
       position: { x: 8, y: 0, z: 48 },
       radius: 8,
       action: () => {},
@@ -177,7 +189,6 @@ export async function buildBeibinRoad(
     },
   );
 
-  // Bench mesh
   const bench = new THREE.Mesh(
     new THREE.BoxGeometry(1.8, 0.45, 0.55),
     new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.8 }),
@@ -198,6 +209,7 @@ export async function buildBeibinRoad(
     bikes,
     interactables,
     agents,
-    attribution: map.attribution,
+    attribution,
+    minimap,
   };
 }

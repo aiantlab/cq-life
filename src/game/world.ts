@@ -31,6 +31,7 @@ export interface WorldHandles {
   rackBikes: THREE.Group[];
   agents: { update: (dt: number, x: number, z: number) => void } | null;
   mapAttribution: string;
+  minimap: { update: (x: number, z: number, heading: number) => void } | null;
   homeDoor: THREE.Object3D;
   storeDoor: THREE.Object3D;
   spawn: THREE.Vector3;
@@ -676,6 +677,7 @@ export async function buildWorld(
     rackBikes: beibin.bikes,
     agents: beibin.agents,
     mapAttribution: beibin.attribution,
+    minimap: beibin.minimap,
     homeDoor,
     storeDoor,
     spawn,

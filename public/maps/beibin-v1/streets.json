@@ -1,0 +1,50 @@
+[
+  {
+    "name": "北滨路",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5482,
+    "lat": 29.5643688,
+    "class": "primary"
+  },
+  {
+    "name": "嘉陵一村巷",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5477559,
+    "lat": 29.5647281,
+    "class": "residential"
+  },
+  {
+    "name": "北滨支路",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5479934,
+    "lat": 29.5647281,
+    "class": "tertiary"
+  },
+  {
+    "name": "小区南门路",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5482,
+    "lat": 29.5647281,
+    "class": "service"
+  },
+  {
+    "name": "江畔巷",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5484685,
+    "lat": 29.5647281,
+    "class": "residential"
+  },
+  {
+    "name": "钢江支路",
+    "type": "street",
+    "detail": "江北区 · 重庆",
+    "lng": 106.5487061,
+    "lat": 29.5647281,
+    "class": "tertiary"
+  }
+]
