@@ -11,7 +11,8 @@ import {
   makeMosaic,
 } from './textures';
 import type { Interactable } from './types';
-import { buildNanbinCorridor, nanbinHintInteractable } from './nanbin';
+import { buildNanbinCorridor } from './nanbin';
+import { buildBeibinRoad, makeBicycle } from './beibin';
 import type { Reflector } from 'three/addons/objects/Reflector.js';
 
 export interface WorldHandles {
@@ -26,6 +27,8 @@ export interface WorldHandles {
   windowMats: THREE.MeshStandardMaterial[];
   waterReflector: Reflector | null;
   car: THREE.Group;
+  bikeVisual: THREE.Group;
+  rackBikes: THREE.Group[];
   homeDoor: THREE.Object3D;
   storeDoor: THREE.Object3D;
   spawn: THREE.Vector3;
@@ -178,7 +181,7 @@ function makeCar(): THREE.Group {
   return car;
 }
 
-/** Yuzhong Daxigou — 双钢路 / 钢院 ordinary renovated compound (~30 mid-rises). */
+/** Jiangbei Beibin Rd — ordinary renovated riverside compound (~30 mid-rises). */
 export function buildWorld(
   scene: THREE.Scene,
   onInteract: {
@@ -191,6 +194,8 @@ export function buildWorld(
     changeClothes: () => void;
     buyFood: () => void;
     buyDrink: () => void;
+    rentBike: () => void;
+    returnBike: () => void;
   },
 ): WorldHandles {
   const group = new THREE.Group();
@@ -218,7 +223,7 @@ export function buildWorld(
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Internal road grid (捍卫路/双钢路一侧进门后的小区路网感)
+  // Internal roads
   const roadH = new THREE.Mesh(new THREE.PlaneGeometry(88, 7.5), roadMat);
   roadH.rotation.x = -Math.PI / 2;
   roadH.position.set(0, 0.02, 2);
@@ -239,7 +244,7 @@ export function buildWorld(
   roadV3.position.set(28, 0.021, -6);
   roadV3.receiveShadow = true;
   group.add(roadV3);
-  // Outside Hanwei/Shuanggang approach
+  // (Beibin arterial in beibin.ts)
   const outerRoad = new THREE.Mesh(new THREE.PlaneGeometry(16, 36), roadMat);
   outerRoad.rotation.x = -Math.PI / 2;
   outerRoad.position.set(0, 0.022, 42);
@@ -282,7 +287,7 @@ export function buildWorld(
     group.add(g);
   }
 
-  // ~30 renovated mid-rise shells — white-green mosaic, ordinary 钢院 density
+  // ~30 renovated mid-rises — white-green mosaic
   const mats = [mosaicA, mosaicB, mosaicC];
   type Bldg = { x: number; z: number; w: number; d: number; floors: number; mat: THREE.Material; wpf: number };
   const buildings: Bldg[] = [];
@@ -384,7 +389,7 @@ export function buildWorld(
     }
   });
 
-  // Gatehouse — 双钢路小区 / 钢院
+  // Gatehouse — 江北北滨路小区
   box(11, 3.0, 4.2, plasterTrim, -8, 1.5, 28, group, colliders);
   box(4.0, 3.0, 4.2, plasterTrim, 8, 1.5, 28, group, colliders);
   box(20, 0.45, 1.1, concrete, 0, 3.25, 28, group);
@@ -398,7 +403,7 @@ export function buildWorld(
   box(1.2, 2.6, 1.2, mosaicB, -3.2, 1.3, 28.2, group);
   box(1.2, 2.6, 1.2, mosaicB, 3.2, 1.3, 28.2, group);
 
-  // Perimeter walls, open at south gate toward 双钢路/捍卫路
+  // Perimeter walls, open south toward 北滨路
   for (const [x, z, w, d] of [
     [-52, -5, 1.1, 90],
     [52, -5, 1.1, 90],
@@ -445,9 +450,9 @@ export function buildWorld(
     lampPost(group, x, z, lamps);
   }
 
-  // Convenience store outside gate (双钢路侧)
-  const storeX = 14;
-  const storeZ = 44;
+  // Convenience store outside gate (北滨路侧)
+  const storeX = 16;
+  const storeZ = 34;
   box(10, 4.0, 8, plasterTrim, storeX, 2.0, storeZ, group, colliders);
   box(10.4, 0.35, 8.4, concrete, storeX, 4.2, storeZ, group);
   const storeFront = new THREE.MeshStandardMaterial({
@@ -528,7 +533,7 @@ export function buildWorld(
   homeLight.position.set(0, 2.4, 0);
   home.add(homeLight);
 
-  // Distant skyline hints only (Jialing side silhouette) — far, non-colliding, not playable riverside
+  // Distant skyline hints (far inland) — non-colliding
   const skyline = new THREE.Group();
   skyline.position.set(0, 0, -78);
   for (let i = 0; i < 12; i++) {
@@ -562,7 +567,7 @@ export function buildWorld(
   interactables.push(
     {
       id: 'home-enter',
-      label: '按 E 进入家中（双钢路小区）',
+      label: '按 E 进入家中（北滨路小区）',
       position: { x: -18, y: 0, z: -2.0 },
       radius: 2.2,
       action: onInteract.enterHome,
@@ -626,14 +631,24 @@ export function buildWorld(
   );
 
 
-  // —— Expand to 东水门大桥 + 南滨路 ——
+  // —— 江北北滨路 (primary) + optional 东水门/南滨 ——
+  const beibin = buildBeibinRoad(group, onInteract.rentBike, onInteract.returnBike);
+  colliders.push(...beibin.colliders);
+  lamps.push(...beibin.lamps);
+  windowMats.push(...beibin.windowMats);
+  interactables.push(...beibin.interactables);
+
   const nanbin = buildNanbinCorridor(group);
   colliders.push(...nanbin.colliders);
   lamps.push(...nanbin.lamps);
   windowMats.push(...nanbin.windowMats);
-  const neonMats = nanbin.neonMats;
-  const roadMats = [roadMat, ...nanbin.roadMats];
-  interactables.push(nanbinHintInteractable());
+
+  const neonMats = [...beibin.neonMats, ...nanbin.neonMats];
+  const roadMats = [roadMat, ...beibin.roadMats, ...nanbin.roadMats];
+
+  const bikeVisual = makeBicycle();
+  bikeVisual.visible = false;
+  group.add(bikeVisual);
 
   return {
     group,
@@ -645,12 +660,15 @@ export function buildWorld(
     storeGlow,
     neonMats,
     windowMats,
-    waterReflector: nanbin.waterReflector,
+    waterReflector: beibin.waterReflector,
     car,
+    bikeVisual,
+    rackBikes: beibin.bikes,
     homeDoor,
     storeDoor,
     spawn,
     carSpawn,
   };
 }
+
 

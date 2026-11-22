@@ -4,6 +4,7 @@ import { PlayerController } from './player';
 import { createState, advanceTime, applyDayNight } from './systems';
 import { HUD } from './ui';
 import type { GameState, Interactable } from './types';
+import { BEIBIN } from './ground';
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -22,9 +23,10 @@ export class Game {
   private storeGroup!: THREE.Object3D;
   private playerMesh!: THREE.Group;
   private nanbinArrived = false;
+  private beibinToast = false;
+  private bridgeToast = false;
   private dayNightAcc = 0;
   private starveToastAcc = 0;
-  private bridgeToast = false;
   private canvas: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -34,7 +36,6 @@ export class Game {
       antialias: true,
       powerPreference: 'high-performance',
     });
-    // Cap DPR for desktop smoothness on retina
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.shadowMap.enabled = true;
@@ -43,12 +44,11 @@ export class Game {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.12, 380);
+    this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.12, 400);
     window.addEventListener('resize', () => this.onResize());
   }
 
   async init() {
-    // No Rapier step — AABB + height field only (feel/FPS pass). Keeps boot fast.
     this.hemi = new THREE.HemisphereLight(0xb1d0ff, 0x3a2a1c, 0.4);
     this.scene.add(this.hemi);
     this.ambient = new THREE.AmbientLight(0xffffff, 0.2);
@@ -76,6 +76,8 @@ export class Game {
       changeClothes: () => this.changeClothes(),
       buyFood: () => this.buyFood(),
       buyDrink: () => this.buyDrink(),
+      rentBike: () => this.rentBike(),
+      returnBike: () => this.returnBike(),
     });
 
     this.homeGroup = this.scene.getObjectByName('homeInterior')!;
@@ -113,7 +115,7 @@ export class Game {
     this.hud.hideTitle();
     this.canvas.requestPointerLock();
     this.last = performance.now();
-    this.hud.showToast('出门向南 → 东水门大桥 → 南滨路', 3.5);
+    this.hud.showToast('江北北滨路小区 — 出门即可租车骑北滨路', 3.6);
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -125,7 +127,7 @@ export class Game {
 
   private frame(t: number) {
     if (!this.running) return;
-    const dt = Math.min(0.033, (t - this.last) / 1000); // clamp harder for feel stability
+    const dt = Math.min(0.033, (t - this.last) / 1000);
     this.last = t;
     this.update(dt);
     this.renderer.render(this.scene, this.camera);
@@ -141,41 +143,54 @@ export class Game {
       this.dayNightAcc = 0;
     }
 
-    // Reflector LOD — skip expensive water pass when far from river
     if (this.world.waterReflector) {
-      const dz = Math.abs(this.player.position.z - 99);
-      this.world.waterReflector.visible = dz < 95;
+      const dz = Math.abs(this.player.position.z - BEIBIN.riverZ);
+      this.world.waterReflector.visible = dz < 100;
     }
 
-    if (this.player.consumeKey('KeyF')) this.toggleVehicle();
+    if (this.player.consumeKey('KeyF')) this.toggleVehicleOrBike();
 
-    // E with nothing nearby → clear feedback
     const ePressed = this.player.consumeKey('KeyE');
 
     if (this.player.mode === 'drive') {
       this.player.updateDrive(dt, this.world.car, this.world.colliders);
       this.playerMesh.visible = false;
+      this.world.bikeVisual.visible = false;
+    } else if (this.player.mode === 'bike') {
+      this.player.updateBike(dt, this.world.bikeVisual, this.world.colliders);
+      this.playerMesh.visible = false;
     } else {
       this.player.updateWalk(dt, this.activeColliders());
+      this.state.mode = this.player.mode;
       this.playerMesh.visible = this.state.inside === 'outside';
       this.playerMesh.position.set(this.player.position.x, this.player.groundY, this.player.position.z);
       this.playerMesh.rotation.y = this.player.yaw;
+      this.world.bikeVisual.visible = false;
     }
 
+    this.state.mode = this.player.mode;
     this.player.applyCamera(this.camera, dt);
 
     const nearby = this.findInteractable();
     const vehiclePrompt = this.vehiclePrompt();
     this.hud.setPrompt(
-      this.player.mode === 'walk' ? nearby?.label ?? vehiclePrompt : vehiclePrompt,
+      this.player.mode === 'walk' || this.player.mode === 'run'
+        ? nearby?.label ?? vehiclePrompt
+        : vehiclePrompt,
     );
+    this.hud.setMode(this.player.mode);
 
     if (ePressed) {
-      if (this.player.mode === 'drive') {
-        this.hud.showToast('下车后才能互动（按 F）', 1.6);
+      if (this.player.mode === 'drive' || this.player.mode === 'bike') {
+        this.hud.showToast(this.player.mode === 'bike' ? '先按 F 下车再互动' : '下车后才能互动（按 F）', 1.6);
       } else if (nearby) {
-        if (nearby.id === 'nanbin-hint') {
-          this.hud.showToast('向南沿路开上东水门大桥，过江即到南滨路夜景段');
+        if (nearby.id === 'beibin-hint') {
+          this.hud.showToast('沿北滨路骑行；向南上桥可到南滨路（可选）');
+        } else if (nearby.id === 'bike-rent' && this.state.hasBike) {
+          // prefer return when already have bike
+          this.returnBike();
+        } else if (nearby.id === 'bike-return' && !this.state.hasBike) {
+          this.rentBike();
         } else {
           nearby.action();
         }
@@ -193,14 +208,23 @@ export class Game {
       }
     }
 
-    const pz = this.player.position.z;
-    if (!this.bridgeToast && pz > 70 && pz < 130 && Math.abs(this.player.position.x) < 8) {
-      this.bridgeToast = true;
-      this.hud.showToast('驶上东水门大桥', 2.2);
+    // Running costs a bit of energy
+    if (this.player.mode === 'run' && this.player.velocity.lengthSq() > 8) {
+      this.state.needs.energy = Math.max(0, this.state.needs.energy - dt * 1.1);
     }
-    if (!this.nanbinArrived && pz > 140) {
+
+    const pz = this.player.position.z;
+    if (!this.beibinToast && pz > 40 && pz < 56) {
+      this.beibinToast = true;
+      this.hud.showToast('江北北滨路', 2.2);
+    }
+    if (!this.bridgeToast && pz > 70 && Math.abs(this.player.position.x) < 8) {
+      this.bridgeToast = true;
+      this.hud.showToast('东水门方向大桥（可选过江）', 2.2);
+    }
+    if (!this.nanbinArrived && pz > 145) {
       this.nanbinArrived = true;
-      this.hud.showToast('抵达南滨路滨江段', 3.2);
+      this.hud.showToast('抵达南滨路（可选目的地）', 3);
     }
 
     if (this.state.dayComplete) {
@@ -213,25 +237,47 @@ export class Game {
 
   private vehiclePrompt(): string | null {
     if (this.state.inside !== 'outside') return null;
-    const carPos = this.world.car.position;
-    const dx = this.player.position.x - carPos.x;
-    const dz = this.player.position.z - carPos.z;
-    const d = Math.hypot(dx, dz);
     if (this.player.mode === 'drive') return '按 F 下车';
-    if (d < 3.4) return '按 F 上车';
+    if (this.player.mode === 'bike') return '按 F 下车（可在租车站按 E 还车）';
+
+    const carPos = this.world.car.position;
+    const dCar = Math.hypot(this.player.position.x - carPos.x, this.player.position.z - carPos.z);
+    if (dCar < 3.4) return '按 F 上车';
     return null;
   }
 
-  private toggleVehicle() {
+  private toggleVehicleOrBike() {
     if (this.state.inside !== 'outside') {
-      this.hud.showToast('室内不能开车', 1.6);
+      this.hud.showToast('室内不能骑车/开车', 1.6);
       return;
     }
+
+    // Dismount bike
+    if (this.player.mode === 'bike') {
+      this.player.mode = 'walk';
+      this.state.mode = 'walk';
+      this.world.bikeVisual.visible = false;
+      this.player.snapTo(this.player.position.x + 0.9, this.player.position.z);
+      this.hud.showToast('已下车 — 单车仍租用中，回租车站按 E 还车', 2.4);
+      return;
+    }
+
+    // Exit car
+    if (this.player.mode === 'drive') {
+      this.player.mode = 'walk';
+      this.state.mode = 'walk';
+      const carPos = this.world.car.position;
+      this.player.snapTo(carPos.x + 1.7, carPos.z);
+      this.hud.showToast('已下车', 1.6);
+      return;
+    }
+
+    // Enter car if close
     const carPos = this.world.car.position;
-    const d = Math.hypot(this.player.position.x - carPos.x, this.player.position.z - carPos.z);
-    if (this.player.mode === 'walk') {
-      if (d > 3.4) {
-        this.hud.showToast('靠近车辆再按 F', 1.6);
+    const dCar = Math.hypot(this.player.position.x - carPos.x, this.player.position.z - carPos.z);
+    if (dCar < 3.4) {
+      if (this.state.hasBike) {
+        this.hud.showToast('请先还单车再开车', 1.8);
         return;
       }
       this.player.mode = 'drive';
@@ -240,12 +286,59 @@ export class Game {
       this.player.carYaw = this.world.car.rotation.y;
       this.player.position.y = 0.9 + this.player.groundY;
       this.hud.showToast('已上车 — WASD 驾驶', 2);
-    } else {
-      this.player.mode = 'walk';
-      this.state.mode = 'walk';
-      this.player.snapTo(carPos.x + 1.7, carPos.z);
-      this.hud.showToast('已下车', 1.6);
+      return;
     }
+
+    // Remount rented bike anywhere outside
+    if (this.state.hasBike) {
+      this.player.mode = 'bike';
+      this.state.mode = 'bike';
+      this.player.carYaw = this.player.yaw;
+      this.player.snapTo(this.player.position.x, this.player.position.z, this.player.yaw);
+      this.hud.showToast('继续骑行 — WASD，Shift 无效', 2);
+      return;
+    }
+
+    this.hud.showToast('靠近车辆按 F，或去北滨路租车站租车', 2);
+  }
+
+  private rentBike() {
+    if (this.state.inside !== 'outside') return;
+    if (this.state.hasBike) {
+      this.hud.showToast('你已经租了车', 1.5);
+      return;
+    }
+    if (this.state.needs.cash < 5) {
+      this.hud.showToast('现金不足（租车 ¥5）', 1.8);
+      return;
+    }
+    this.state.needs.cash -= 5;
+    this.state.hasBike = true;
+    this.state.bikeDepositPaid = true;
+    this.player.mode = 'bike';
+    this.state.mode = 'bike';
+    this.player.carYaw = Math.PI / 2; // face along Beibin roughly east
+    this.player.snapTo(-16, 57.5, this.player.carYaw);
+    // hide one rack bike
+    if (this.world.rackBikes[0]) this.world.rackBikes[0].visible = false;
+    this.hud.showToast('已租车 ¥5 — WASD 骑行北滨路，F 下车，回租车站 E 还车', 3.2);
+  }
+
+  private returnBike() {
+    if (!this.state.hasBike) {
+      this.hud.showToast('你没有租用中的单车', 1.5);
+      return;
+    }
+    if (this.player.mode === 'bike') {
+      this.player.mode = 'walk';
+      this.world.bikeVisual.visible = false;
+    }
+    this.state.hasBike = false;
+    this.state.mode = 'walk';
+    this.player.mode = 'walk';
+    if (this.world.rackBikes[0]) this.world.rackBikes[0].visible = true;
+    this.player.snapTo(-16, 56.5);
+    this.hud.showToast('单车已归还', 1.8);
   }
 
   private activeColliders() {
@@ -254,7 +347,7 @@ export class Game {
   }
 
   private findInteractable(): Interactable | null {
-    if (this.player.mode !== 'walk') return null;
+    if (this.player.mode !== 'walk' && this.player.mode !== 'run') return null;
     let best: Interactable | null = null;
     let bestD = Infinity;
     for (const it of this.world.interactables) {
@@ -270,14 +363,21 @@ export class Game {
 
   private interactableAllowed(id: string) {
     const inside = this.state.inside;
-    if (inside === 'outside') return id === 'home-enter' || id === 'store-enter' || id === 'nanbin-hint';
+    if (inside === 'outside') {
+      if (id === 'bike-rent') return !this.state.hasBike;
+      if (id === 'bike-return') return this.state.hasBike;
+      return id === 'home-enter' || id === 'store-enter' || id === 'beibin-hint';
+    }
     if (inside === 'home') return ['home-exit', 'eat', 'sleep', 'clothes'].includes(id);
     if (inside === 'store') return ['store-exit', 'buy-food', 'buy-drink'].includes(id);
     return false;
   }
 
   private enterHome() {
-    if (this.player.mode === 'drive') return;
+    if (this.player.mode === 'drive' || this.player.mode === 'bike') {
+      this.hud.showToast('请先下车再进屋', 1.6);
+      return;
+    }
     this.state.inside = 'home';
     this.homeGroup.visible = true;
     this.player.snapTo(-18, -1.5);
@@ -288,21 +388,24 @@ export class Game {
     this.state.inside = 'outside';
     this.homeGroup.visible = false;
     this.player.snapTo(-18, 1.0);
-    this.hud.showToast('出门', 1.4);
+    this.hud.showToast('出门 — 向南即北滨路', 1.6);
   }
 
   private enterStore() {
-    if (this.player.mode === 'drive') return;
+    if (this.player.mode === 'drive' || this.player.mode === 'bike') {
+      this.hud.showToast('请先下车再进店', 1.6);
+      return;
+    }
     this.state.inside = 'store';
     this.storeGroup.visible = true;
-    this.player.snapTo(14, 42.5);
+    this.player.snapTo(16, 32.5);
     this.hud.showToast('进入便利店', 1.6);
   }
 
   private exitStore() {
     this.state.inside = 'outside';
     this.storeGroup.visible = false;
-    this.player.snapTo(14, 39.5);
+    this.player.snapTo(16, 30.5);
     this.hud.showToast('离开便利店', 1.4);
   }
 
@@ -344,7 +447,7 @@ export class Game {
     }
     this.state.needs.cash -= 18;
     this.state.needs.hunger = Math.min(100, this.state.needs.hunger + 35);
-    this.hud.showToast('买了盒饭（-¥18，饥饿↓）', 2);
+    this.hud.showToast('买了盒饭（-¥18）', 2);
   }
 
   private buyDrink() {
@@ -355,6 +458,6 @@ export class Game {
     }
     this.state.needs.cash -= 6;
     this.state.needs.energy = Math.min(100, this.state.needs.energy + 12);
-    this.hud.showToast('买了饮料（-¥6，精力↑）', 2);
+    this.hud.showToast('买了饮料（-¥6）', 2);
   }
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CQ Life — 双钢路 → 东水门 → 南滨路</title>
+    <title>CQ Life — 江北北滨路</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -13,7 +13,8 @@
       <canvas id="game"></canvas>
       <div id="hud">
         <div id="topbar">
-          <div class="brand">CQ Life <span>双钢路 · 东水门 · 南滨路</span></div>
+          <div class="brand">CQ Life <span>江北 · 北滨路</span></div>
+          <div id="mode" data-mode="walk">步行</div>
           <div id="clock">06:00</div>
         </div>
         <div id="needs">
@@ -24,16 +25,16 @@
         <div id="prompt" class="hidden"></div>
         <div id="toast" class="hidden"></div>
         <div id="hint">
-          WASD 移动 · Shift 跑 · 鼠标环视 · E 互动 · F 上车/下车 · 向南过桥到南滨路
+          WASD 移动 · Shift 跑步 · E 互动/租车 · F 上车·骑车·下车 · 北滨路骑行
         </div>
       </div>
       <div id="title">
         <div class="panel">
-          <h1>双钢路小区 → 南滨路</h1>
-          <p>从渝中大溪沟双钢路钢院出门，步行或驾车经东水门大桥过江，抵达南滨路滨江段：宽马路、湿路反光、江面倒影、夜灯与临江建筑密度。</p>
+          <h1>江北北滨路 · 生活切片</h1>
+          <p>从江北北滨路普通小区出门：走路、跑步、租共享单车骑北滨路，或开车。回家吃饭睡觉换衣，便利店购物。东水门大桥→南滨路为可选过江目的地，不是开局。</p>
           <ul>
-            <li>小区生活循环仍在：回家吃饭睡觉换衣、便利店购物</li>
-            <li>向南出小区门岗沿路即可上桥 · 桌面 Chrome / Edge</li>
+            <li>租车站在小区门外北滨路江畔步道（绿色租车点）</li>
+            <li>Shift = 跑步模式 · 桌面 Chrome / Edge</li>
           </ul>
           <button id="startBtn" type="button">开始一天</button>
         </div>

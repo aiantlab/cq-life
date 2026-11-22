@@ -10,6 +10,8 @@ export function createState(): GameState {
     outfit: 'casual',
     inside: 'outside',
     dayComplete: false,
+    hasBike: false,
+    bikeDepositPaid: false,
   };
 }
 

@@ -27,11 +27,16 @@ canvas#game { display: block; width: 100%; height: 100%; }
   padding: 8px 12px; border-radius: 12px;
 }
 .brand span { color: #9fb0c7; font-weight: 500; margin-left: 8px; font-size: 12px; }
-#clock {
+#clock, #mode {
   font-variant-numeric: tabular-nums; font-weight: 600;
   background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(10px);
   padding: 8px 14px; border-radius: 999px;
 }
+#mode[data-mode="run"] { color: #fbbf24; }
+#mode[data-mode="bike"] { color: #4ade80; }
+#mode[data-mode="drive"] { color: #38bdf8; }
+#topbar { gap: 10px; }
+
 
 #needs {
   position: absolute; left: 20px; top: 72px;

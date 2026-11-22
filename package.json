@@ -1,7 +1,7 @@
 {
   "name": "cq-life",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,5 +19,5 @@
     "@types/three": "^0.187.0",
     "three": "^0.187.0"
   },
-  "description": "Chongqing Yuzhong Daxigou Shuanggang Rd residential life sim — Slice 1"
+  "description": "Chongqing Jiangbei Beibin Rd life sim — bike + run"
 }

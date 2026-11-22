@@ -1,4 +1,4 @@
-export type Mode = 'walk' | 'drive';
+export type Mode = 'walk' | 'run' | 'bike' | 'drive';
 
 export interface Needs {
   hunger: number; // 0..100
@@ -21,4 +21,6 @@ export interface GameState {
   outfit: 'casual' | 'home' | 'jacket';
   inside: 'outside' | 'home' | 'store';
   dayComplete: boolean;
+  hasBike: boolean;
+  bikeDepositPaid: boolean;
 }

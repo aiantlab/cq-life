@@ -13,6 +13,7 @@ export class HUD {
   private lastPrompt = '';
   private lastHungerShown = 100;
   private lastPhase = '';
+  private modeEl = document.getElementById('mode') as HTMLElement | null;
 
   hideTitle() {
     this.title.classList.add('hidden');
@@ -29,7 +30,6 @@ export class HUD {
     this.setBar(this.energy, state.needs.energy);
     this.cash.textContent = `¥${Math.floor(state.needs.cash)}`;
 
-    // Noticeable hunger thresholds
     if (state.needs.hunger < 35 && this.lastHungerShown >= 35) {
       this.showToast('有点饿了', 2);
     } else if (state.needs.hunger < 15 && this.lastHungerShown >= 15) {
@@ -61,7 +61,6 @@ export class HUD {
       this.prompt.textContent = text;
       this.prompt.classList.remove('hidden');
       this.prompt.classList.remove('pulse');
-      // restart pulse
       void this.prompt.offsetWidth;
       this.prompt.classList.add('pulse');
       this.lastPrompt = text;
@@ -72,5 +71,17 @@ export class HUD {
     this.toast.textContent = text;
     this.toast.classList.remove('hidden');
     this.toastTimer = seconds;
+  }
+
+  setMode(mode: string) {
+    if (!this.modeEl) return;
+    const map: Record<string, string> = {
+      walk: '步行',
+      run: '跑步',
+      bike: '骑行',
+      drive: '驾车',
+    };
+    this.modeEl.textContent = map[mode] ?? mode;
+    this.modeEl.dataset.mode = mode;
   }
 }

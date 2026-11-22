@@ -20,12 +20,11 @@ export class PlayerController {
   radius = 0.35;
   onGround = true;
   carYaw = Math.PI;
-  /** Smoothed ground follow — kills bridge height jitter. */
   groundY = 0;
   private camPos = new THREE.Vector3();
   private camTarget = new THREE.Vector3();
   private camInitialized = false;
-  private carPitch = 0;
+  private vehiclePitch = 0;
 
   private keys = new Set<string>();
   private canvas: HTMLCanvasElement;
@@ -52,7 +51,8 @@ export class PlayerController {
       this.pointerLocked = document.pointerLockElement === canvas;
     });
     document.addEventListener('mousemove', (e) => {
-      if (!this.pointerLocked || this.mode === 'drive') return;
+      if (!this.pointerLocked) return;
+      if (this.mode === 'drive' || this.mode === 'bike') return;
       this.yaw -= e.movementX * 0.0020;
       this.pitch -= e.movementY * 0.0018;
       this.pitch = Math.max(-1.15, Math.min(1.15, this.pitch));
@@ -63,11 +63,6 @@ export class PlayerController {
     if (!this.keys.has(code)) return false;
     this.keys.delete(code);
     return true;
-  }
-
-  /** Peek without consuming — for “E with nothing nearby” feedback. */
-  isKeyJustLogic(code: string) {
-    return this.keys.has(code);
   }
 
   isDown(code: string) {
@@ -87,9 +82,13 @@ export class PlayerController {
     return _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
   }
 
+  /** Foot modes: walk / run (Shift). */
   updateWalk(dt: number, colliders: THREE.Box3[]) {
-    const run = this.isDown('ShiftLeft') || this.isDown('ShiftRight');
-    const maxSpeed = run ? 6.8 : 3.9;
+    const wantRun = this.isDown('ShiftLeft') || this.isDown('ShiftRight');
+    if (this.mode === 'walk' || this.mode === 'run') {
+      this.mode = wantRun ? 'run' : 'walk';
+    }
+    const maxSpeed = this.mode === 'run' ? 7.4 : 3.9;
     _wish.set(0, 0, 0);
     if (this.isDown('KeyW') || this.isDown('ArrowUp')) _wish.add(this.forwardFlat);
     if (this.isDown('KeyS') || this.isDown('ArrowDown')) _wish.sub(this.forwardFlat);
@@ -98,8 +97,7 @@ export class PlayerController {
     const hasWish = _wish.lengthSq() > 0;
     if (hasWish) _wish.normalize().multiplyScalar(maxSpeed);
 
-    // Snappier accel when pressing, firmer stop when releasing
-    const resp = hasWish ? 16 : 22;
+    const resp = hasWish ? (this.mode === 'run' ? 14 : 16) : 22;
     this.velocity.x = THREE.MathUtils.damp(this.velocity.x, _wish.x, resp, dt);
     this.velocity.z = THREE.MathUtils.damp(this.velocity.z, _wish.z, resp, dt);
     this.velocity.y = 0;
@@ -107,6 +105,47 @@ export class PlayerController {
     this.moveSubsteps(dt, colliders, this.radius, 3);
     this.smoothGround(dt, 18);
     this.position.y = this.height + this.groundY;
+  }
+
+  /** Shared bike — light, snappy, lean into turns. */
+  updateBike(dt: number, bike: THREE.Group, colliders: THREE.Box3[]) {
+    let throttle = 0;
+    if (this.isDown('KeyW') || this.isDown('ArrowUp')) throttle += 1;
+    if (this.isDown('KeyS') || this.isDown('ArrowDown')) throttle -= 0.55;
+    let steer = 0;
+    if (this.isDown('KeyA') || this.isDown('ArrowLeft')) steer += 1;
+    if (this.isDown('KeyD') || this.isDown('ArrowRight')) steer -= 1;
+
+    const maxSpeed = 12.5;
+    _fwd.set(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
+    const forwardSpeed = this.velocity.dot(_fwd);
+    const target = throttle * maxSpeed;
+    const rate = throttle > 0 ? 7.5 : throttle < 0 ? 9 : 6;
+    const newSpeed = THREE.MathUtils.damp(forwardSpeed, target, rate, dt);
+
+    const speedFactor = THREE.MathUtils.clamp(Math.abs(newSpeed) / maxSpeed, 0.12, 1);
+    if (Math.abs(newSpeed) > 0.2) {
+      this.carYaw += steer * dt * (2.35 - 0.9 * speedFactor) * Math.sign(newSpeed || 1);
+    }
+
+    _fwd.set(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
+    this.velocity.copy(_fwd.multiplyScalar(newSpeed));
+
+    this.moveSubsteps(dt, colliders, 0.55, 3);
+    this.smoothGround(dt, 20);
+    this.position.y = 0.95 + this.groundY;
+
+    const slope = sampleSlopePitch(this.position.x, this.position.z);
+    this.vehiclePitch = THREE.MathUtils.damp(this.vehiclePitch, slope, 12, dt);
+    const lean = THREE.MathUtils.damp(bike.rotation.z, -steer * 0.28 * speedFactor, 10, dt);
+
+    bike.visible = true;
+    bike.position.set(this.position.x, this.groundY, this.position.z);
+    bike.rotation.order = 'YXZ';
+    bike.rotation.y = this.carYaw;
+    bike.rotation.x = this.vehiclePitch;
+    bike.rotation.z = lean;
+    this.yaw = this.carYaw;
   }
 
   updateDrive(dt: number, car: THREE.Group, colliders: THREE.Box3[]) {
@@ -120,10 +159,8 @@ export class PlayerController {
     const maxSpeed = 18;
     _fwd.set(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
     const forwardSpeed = this.velocity.dot(_fwd);
-    // Clear accel / engine brake
-    let target = throttle * maxSpeed;
-    if (throttle === 0) target = 0;
-    const rate = throttle !== 0 ? 5.5 : 7.5; // accel vs coast/brake feel
+    const target = throttle * maxSpeed;
+    const rate = throttle !== 0 ? 5.5 : 7.5;
     const newSpeed = THREE.MathUtils.damp(forwardSpeed, target, rate, dt);
 
     const speedFactor = THREE.MathUtils.clamp(Math.abs(newSpeed) / maxSpeed, 0.15, 1);
@@ -139,20 +176,18 @@ export class PlayerController {
     this.position.y = 0.9 + this.groundY;
 
     const slope = sampleSlopePitch(this.position.x, this.position.z);
-    this.carPitch = THREE.MathUtils.damp(this.carPitch, slope, 10, dt);
+    this.vehiclePitch = THREE.MathUtils.damp(this.vehiclePitch, slope, 10, dt);
 
     car.position.set(this.position.x, this.groundY, this.position.z);
     car.rotation.order = 'YXZ';
     car.rotation.y = this.carYaw;
-    car.rotation.x = this.carPitch;
+    car.rotation.x = this.vehiclePitch;
     this.yaw = this.carYaw;
   }
 
   private smoothGround(dt: number, lambda: number) {
     const target = sampleGround(this.position.x, this.position.z);
-    // Hard snap only when nearly flat-to-flat; otherwise damp
     if (Math.abs(target - this.groundY) > 2.5) {
-      // still damp aggressively rather than teleport (prevents nausea)
       this.groundY = THREE.MathUtils.damp(this.groundY, target, lambda * 2.2, dt);
     } else {
       this.groundY = THREE.MathUtils.damp(this.groundY, target, lambda, dt);
@@ -195,9 +230,21 @@ export class PlayerController {
   }
 
   applyCamera(camera: THREE.PerspectiveCamera, dt: number) {
-    if (this.mode === 'walk') {
+    if (this.mode === 'walk' || this.mode === 'run') {
       _camPos.copy(this.position);
+      // slight bob hint when running (very soft)
+      if (this.mode === 'run' && this.velocity.lengthSq() > 4) {
+        _camPos.y += Math.sin(performance.now() * 0.012) * 0.03;
+      }
       _camTarget.copy(this.position).add(this.lookDir);
+    } else if (this.mode === 'bike') {
+      _back.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+      _camPos.set(
+        this.position.x + _back.x * 5.2,
+        this.groundY + 2.6,
+        this.position.z + _back.z * 5.2,
+      );
+      _camTarget.set(this.position.x, this.groundY + 1.15, this.position.z);
     } else {
       _back.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
       _camPos.set(
@@ -213,7 +260,6 @@ export class PlayerController {
       this.camTarget.copy(_camTarget);
       this.camInitialized = true;
     } else {
-      // Stronger follow on XZ, slightly softer on Y to kill bridge bob
       this.camPos.x = THREE.MathUtils.damp(this.camPos.x, _camPos.x, 14, dt);
       this.camPos.z = THREE.MathUtils.damp(this.camPos.z, _camPos.z, 14, dt);
       this.camPos.y = THREE.MathUtils.damp(this.camPos.y, _camPos.y, 10, dt);
@@ -226,7 +272,6 @@ export class PlayerController {
     camera.lookAt(this.camTarget);
   }
 
-  /** Call after teleport (home/store) so camera/ground don't lerp from old place. */
   snapTo(x: number, z: number, yaw?: number) {
     this.position.x = x;
     this.position.z = z;
