@@ -5,6 +5,7 @@ import { PlayerController } from './player';
 import { createState, advanceTime, applyDayNight } from './systems';
 import { HUD } from './ui';
 import type { GameState, Interactable } from './types';
+import { sampleGround } from './ground';
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -24,6 +25,7 @@ export class Game {
   private homeGroup!: THREE.Object3D;
   private storeGroup!: THREE.Object3D;
   private playerMesh!: THREE.Group;
+  private nanbinArrived = false;
 
   private canvas: HTMLCanvasElement;
 
@@ -42,7 +44,7 @@ export class Game {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 220);
+    this.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 420);
     window.addEventListener('resize', () => this.onResize());
   }
 
@@ -63,11 +65,11 @@ export class Game {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.camera.near = 1;
-    this.sun.shadow.camera.far = 120;
-    this.sun.shadow.camera.left = -50;
-    this.sun.shadow.camera.right = 50;
-    this.sun.shadow.camera.top = 50;
-    this.sun.shadow.camera.bottom = -50;
+    this.sun.shadow.camera.far = 260;
+    this.sun.shadow.camera.left = -90;
+    this.sun.shadow.camera.right = 90;
+    this.sun.shadow.camera.top = 120;
+    this.sun.shadow.camera.bottom = -80;
     this.scene.add(this.sun);
 
     this.world = buildWorld(this.scene, {
@@ -147,7 +149,7 @@ export class Game {
     } else {
       this.player.updateWalk(dt, this.activeColliders());
       this.playerMesh.visible = this.state.inside === 'outside';
-      this.playerMesh.position.set(this.player.position.x, 0, this.player.position.z);
+      this.playerMesh.position.set(this.player.position.x, sampleGround(this.player.position.x, this.player.position.z), this.player.position.z);
       this.playerMesh.rotation.y = this.player.yaw;
     }
 
@@ -157,13 +159,23 @@ export class Game {
     const nearby = this.findInteractable();
     this.hud.setPrompt(nearby && this.player.mode === 'walk' ? nearby.label : this.vehiclePrompt());
     if (nearby && this.player.mode === 'walk' && this.player.consumeKey('KeyE')) {
-      nearby.action();
+      if (nearby.id === 'nanbin-hint') {
+        this.hud.showToast('向南沿路开上东水门大桥，过江即到南滨路夜景段');
+      } else {
+        nearby.action();
+      }
     }
 
     if (this.state.needs.hunger <= 0) {
       this.state.needs.energy = Math.max(0, this.state.needs.energy - dt * 2);
       this.hud.showToast('你太饿了，精力在下降…', 1.2);
     }
+    const pz = this.player.position.z;
+    if (!this.nanbinArrived && pz > 140) {
+      this.nanbinArrived = true;
+      this.hud.showToast('抵达南滨路滨江段', 3.2);
+    }
+
     if (this.state.dayComplete) {
       this.hud.showToast('已过完一天！切片1验收循环达成。', 4);
       this.state.dayComplete = false;
@@ -229,7 +241,7 @@ export class Game {
 
   private interactableAllowed(id: string) {
     const inside = this.state.inside;
-    if (inside === 'outside') return id === 'home-enter' || id === 'store-enter';
+    if (inside === 'outside') return id === 'home-enter' || id === 'store-enter' || id === 'nanbin-hint';
     if (inside === 'home') return ['home-exit', 'eat', 'sleep', 'clothes'].includes(id);
     if (inside === 'store') return ['store-exit', 'buy-food', 'buy-drink'].includes(id);
     return false;

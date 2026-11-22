@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Mode } from './types';
+import { sampleGround, overRiver, onBridgeDeck, WORLD_BOUNDS } from './ground';
 
 export class PlayerController {
   mode: Mode = 'walk';
@@ -19,7 +20,7 @@ export class PlayerController {
   constructor(canvas: HTMLCanvasElement, spawn: THREE.Vector3) {
     this.canvas = canvas;
     this.position.copy(spawn);
-    this.position.y = this.height;
+    this.position.y = this.height + sampleGround(spawn.x, spawn.z);
 
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
@@ -77,7 +78,8 @@ export class PlayerController {
     this.velocity.y = 0;
 
     this.moveWithColliders(dt, colliders, this.radius);
-    this.position.y = this.height;
+    const g = sampleGround(this.position.x, this.position.z);
+    this.position.y = this.height + g;
   }
 
   updateDrive(dt: number, car: THREE.Group, colliders: THREE.Box3[]) {
@@ -88,7 +90,7 @@ export class PlayerController {
     if (this.isDown('KeyA') || this.isDown('ArrowLeft')) steer += 1;
     if (this.isDown('KeyD') || this.isDown('ArrowRight')) steer -= 1;
 
-    const maxSpeed = 14;
+    const maxSpeed = 16;
     const accel = 10;
     const target = throttle * maxSpeed;
     const forwardSpeed = this.velocity.dot(
@@ -96,43 +98,48 @@ export class PlayerController {
     );
     const newSpeed = THREE.MathUtils.damp(forwardSpeed, target, accel * 0.35, dt);
     if (Math.abs(newSpeed) > 0.4) {
-      this.carYaw += steer * dt * 1.5 * Math.sign(newSpeed);
+      this.carYaw += steer * dt * 1.45 * Math.sign(newSpeed);
     }
     const dir = new THREE.Vector3(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
     this.velocity.copy(dir.multiplyScalar(newSpeed));
-    // friction when no input
     if (throttle === 0) {
       this.velocity.multiplyScalar(Math.max(0, 1 - dt * 1.8));
     }
 
     this.moveWithColliders(dt, colliders, 1.1);
-    this.position.y = 0.9;
-    car.position.set(this.position.x, 0, this.position.z);
+    const g = sampleGround(this.position.x, this.position.z);
+    this.position.y = 0.9 + g;
+    car.position.set(this.position.x, g, this.position.z);
     car.rotation.y = this.carYaw;
     this.yaw = this.carYaw;
   }
 
   private moveWithColliders(dt: number, colliders: THREE.Box3[], radius: number) {
     const next = this.position.clone().addScaledVector(this.velocity, dt);
-    // X then Z sweep
+
     const tryX = this.position.clone();
     tryX.x = next.x;
-    if (!this.hits(tryX, colliders, radius)) this.position.x = tryX.x;
+    if (!this.hits(tryX, colliders, radius) && this.traversable(tryX.x, tryX.z)) this.position.x = tryX.x;
     else this.velocity.x = 0;
 
     const tryZ = this.position.clone();
     tryZ.z = next.z;
-    if (!this.hits(tryZ, colliders, radius)) this.position.z = tryZ.z;
+    if (!this.hits(tryZ, colliders, radius) && this.traversable(tryZ.x, tryZ.z)) this.position.z = tryZ.z;
     else this.velocity.z = 0;
 
-    // soft world bounds
-    this.position.x = THREE.MathUtils.clamp(this.position.x, -48, 48);
-    this.position.z = THREE.MathUtils.clamp(this.position.z, -50, 55);
+    this.position.x = THREE.MathUtils.clamp(this.position.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
+    this.position.z = THREE.MathUtils.clamp(this.position.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
+  }
+
+  private traversable(x: number, z: number) {
+    if (overRiver(x, z) && !onBridgeDeck(x, z)) return false;
+    return true;
   }
 
   private hits(pos: THREE.Vector3, colliders: THREE.Box3[], radius: number) {
+    const g = sampleGround(pos.x, pos.z);
     const body = new THREE.Box3().setFromCenterAndSize(
-      new THREE.Vector3(pos.x, 1.0, pos.z),
+      new THREE.Vector3(pos.x, g + 1.0, pos.z),
       new THREE.Vector3(radius * 2, 1.8, radius * 2),
     );
     for (const c of colliders) {
@@ -142,6 +149,7 @@ export class PlayerController {
   }
 
   applyCamera(camera: THREE.PerspectiveCamera) {
+    const g = sampleGround(this.position.x, this.position.z);
     if (this.mode === 'walk') {
       camera.position.copy(this.position);
       const target = this.position.clone().add(this.lookDir);
@@ -149,11 +157,11 @@ export class PlayerController {
     } else {
       const back = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
       camera.position.set(
-        this.position.x + back.x * 7.5,
-        3.8,
-        this.position.z + back.z * 7.5,
+        this.position.x + back.x * 8.5,
+        g + 4.2,
+        this.position.z + back.z * 8.5,
       );
-      camera.lookAt(this.position.x, 1.2, this.position.z);
+      camera.lookAt(this.position.x, g + 1.4, this.position.z);
     }
   }
 }

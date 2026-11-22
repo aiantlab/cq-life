@@ -11,15 +11,20 @@ import {
   makeMosaic,
 } from './textures';
 import type { Interactable } from './types';
+import { buildNanbinCorridor, nanbinHintInteractable } from './nanbin';
+import type { Reflector } from 'three/addons/objects/Reflector.js';
 
 export interface WorldHandles {
   group: THREE.Group;
   colliders: THREE.Box3[];
   interactables: Interactable[];
   roadMat: THREE.MeshStandardMaterial;
+  roadMats: THREE.MeshStandardMaterial[];
   lamps: THREE.PointLight[];
   storeGlow: THREE.MeshStandardMaterial[];
+  neonMats: THREE.MeshStandardMaterial[];
   windowMats: THREE.MeshStandardMaterial[];
+  waterReflector: Reflector | null;
   car: THREE.Group;
   homeDoor: THREE.Object3D;
   storeDoor: THREE.Object3D;
@@ -207,7 +212,8 @@ export function buildWorld(
   const mosaicC = makeMosaic('#e2ebe3', '#6aa978');
 
   // Flat urban ground — ordinary compound, not hillside
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 130), concrete);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 280), concrete);
+  ground.position.z = 70;
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   group.add(ground);
@@ -619,14 +625,27 @@ export function buildWorld(
     },
   );
 
+
+  // —— Expand to 东水门大桥 + 南滨路 ——
+  const nanbin = buildNanbinCorridor(group);
+  colliders.push(...nanbin.colliders);
+  lamps.push(...nanbin.lamps);
+  windowMats.push(...nanbin.windowMats);
+  const neonMats = nanbin.neonMats;
+  const roadMats = [roadMat, ...nanbin.roadMats];
+  interactables.push(nanbinHintInteractable());
+
   return {
     group,
     colliders,
     interactables,
     roadMat,
+    roadMats,
     lamps,
     storeGlow,
+    neonMats,
     windowMats,
+    waterReflector: nanbin.waterReflector,
     car,
     homeDoor,
     storeDoor,
@@ -634,3 +653,4 @@ export function buildWorld(
     carSpawn,
   };
 }
+
