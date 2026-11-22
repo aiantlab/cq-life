@@ -5,6 +5,7 @@ import { createState, advanceTime, applyDayNight } from './systems';
 import { HUD } from './ui';
 import type { GameState, Interactable } from './types';
 import { BEIBIN } from './ground';
+import { createHumanoid, animateHumanoid } from './character';
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -66,7 +67,7 @@ export class Game {
     this.sun.shadow.bias = -0.00025;
     this.scene.add(this.sun);
 
-    this.world = buildWorld(this.scene, {
+    this.world = await buildWorld(this.scene, {
       enterHome: () => this.enterHome(),
       exitHome: () => this.exitHome(),
       enterStore: () => this.enterStore(),
@@ -78,6 +79,7 @@ export class Game {
       buyDrink: () => this.buyDrink(),
       rentBike: () => this.rentBike(),
       returnBike: () => this.returnBike(),
+      shower: () => this.shower(),
     });
 
     this.homeGroup = this.scene.getObjectByName('homeInterior')!;
@@ -92,22 +94,7 @@ export class Game {
   }
 
   private makePlayerAvatar() {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.28, 0.9, 4, 8),
-      new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.65, metalness: 0.1 }),
-    );
-    body.position.y = 0.95;
-    body.castShadow = true;
-    g.add(body);
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0xe8c4a8, roughness: 0.7 }),
-    );
-    head.position.y = 1.7;
-    head.castShadow = true;
-    g.add(head);
-    return g;
+    return createHumanoid({ skin: 0xe8c4a8, shirt: 0x3b82f6, pants: 0x1f2937, scale: 1 });
   }
 
   start() {
@@ -115,7 +102,7 @@ export class Game {
     this.hud.hideTitle();
     this.canvas.requestPointerLock();
     this.last = performance.now();
-    this.hud.showToast('江北北滨路小区 — 出门即可租车骑北滨路', 3.6);
+    this.hud.showToast('江北北滨路 — 第三人称角色 · 街上有行人车流 · 可租车', 3.8);
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -162,10 +149,17 @@ export class Game {
     } else {
       this.player.updateWalk(dt, this.activeColliders());
       this.state.mode = this.player.mode;
+      // Visible third-person body (not freecam)
       this.playerMesh.visible = this.state.inside === 'outside';
       this.playerMesh.position.set(this.player.position.x, this.player.groundY, this.player.position.z);
       this.playerMesh.rotation.y = this.player.yaw;
+      const spd = Math.hypot(this.player.velocity.x, this.player.velocity.z);
+      animateHumanoid(this.playerMesh, spd, dt, this.player.mode === 'run');
       this.world.bikeVisual.visible = false;
+    }
+
+    if (this.world.agents) {
+      this.world.agents.update(dt, this.player.position.x, this.player.position.z);
     }
 
     this.state.mode = this.player.mode;
@@ -185,7 +179,12 @@ export class Game {
         this.hud.showToast(this.player.mode === 'bike' ? '先按 F 下车再互动' : '下车后才能互动（按 F）', 1.6);
       } else if (nearby) {
         if (nearby.id === 'beibin-hint') {
-          this.hud.showToast('沿北滨路骑行；向南上桥可到南滨路（可选）');
+          this.hud.showToast('北滨路：行人车流氛围中骑行；向南上桥可到南滨（可选）');
+        } else if (nearby.id === 'bench') {
+          this.state.needs.energy = Math.min(100, this.state.needs.energy + 18);
+          this.state.needs.fun = Math.min(100, this.state.needs.fun + 22);
+          this.state.gameHour = Math.min(23.9, this.state.gameHour + 0.15);
+          this.hud.showToast('江畔休息（精力+ 心情+）', 2);
         } else if (nearby.id === 'bike-rent' && this.state.hasBike) {
           // prefer return when already have bike
           this.returnBike();
@@ -366,9 +365,9 @@ export class Game {
     if (inside === 'outside') {
       if (id === 'bike-rent') return !this.state.hasBike;
       if (id === 'bike-return') return this.state.hasBike;
-      return id === 'home-enter' || id === 'store-enter' || id === 'beibin-hint';
+      return id === 'home-enter' || id === 'store-enter' || id === 'beibin-hint' || id === 'bench';
     }
-    if (inside === 'home') return ['home-exit', 'eat', 'sleep', 'clothes'].includes(id);
+    if (inside === 'home') return ['home-exit', 'eat', 'sleep', 'clothes', 'shower'].includes(id);
     if (inside === 'store') return ['store-exit', 'buy-food', 'buy-drink'].includes(id);
     return false;
   }
@@ -431,12 +430,21 @@ export class Game {
     const i = order.indexOf(this.state.outfit);
     this.state.outfit = order[(i + 1) % order.length];
     const colors: Record<string, number> = { casual: 0x3b82f6, home: 0x94a3b8, jacket: 0x1f2937 };
-    const body = this.playerMesh.children[0] as THREE.Mesh;
-    (body.material as THREE.MeshStandardMaterial).color.setHex(colors[this.state.outfit]);
+    const torso = this.playerMesh.getObjectByName('torso') as THREE.Mesh | undefined;
+    if (torso && torso.material) {
+      (torso.material as THREE.MeshStandardMaterial).color.setHex(colors[this.state.outfit]);
+    }
     this.hud.showToast(
       `已换成：${this.state.outfit === 'casual' ? '日常便装' : this.state.outfit === 'home' ? '居家服' : '外套'}`,
       1.8,
     );
+  }
+
+  private shower() {
+    if (this.state.inside !== 'home') return;
+    this.state.needs.hygiene = Math.min(100, this.state.needs.hygiene + 55);
+    this.state.gameHour = Math.min(23.9, this.state.gameHour + 0.2);
+    this.hud.showToast('洗了个澡（清洁恢复）', 2);
   }
 
   private buyFood() {

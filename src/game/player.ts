@@ -230,13 +230,17 @@ export class PlayerController {
   }
 
   applyCamera(camera: THREE.PerspectiveCamera, dt: number) {
+    // Locked: visible third-person body for walk/run (not freecam)
     if (this.mode === 'walk' || this.mode === 'run') {
-      _camPos.copy(this.position);
-      // slight bob hint when running (very soft)
-      if (this.mode === 'run' && this.velocity.lengthSq() > 4) {
-        _camPos.y += Math.sin(performance.now() * 0.012) * 0.03;
-      }
-      _camTarget.copy(this.position).add(this.lookDir);
+      _back.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      const dist = this.mode === 'run' ? 4.6 : 4.2;
+      const height = this.mode === 'run' ? 2.55 : 2.35;
+      _camPos.set(
+        this.position.x + _back.x * dist,
+        this.groundY + height,
+        this.position.z + _back.z * dist,
+      );
+      _camTarget.set(this.position.x, this.groundY + 1.45, this.position.z);
     } else if (this.mode === 'bike') {
       _back.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
       _camPos.set(

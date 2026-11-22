@@ -5,7 +5,7 @@ import type { WorldHandles } from './world';
 export function createState(): GameState {
   return {
     mode: 'walk',
-    needs: { hunger: 72, energy: 80, cash: 120 },
+    needs: { hunger: 72, energy: 80, hygiene: 75, fun: 60, cash: 120 },
     gameHour: 7.5,
     outfit: 'casual',
     inside: 'outside',
@@ -24,6 +24,8 @@ export function createState(): GameState {
 export const SEC_PER_GAME_HOUR = 7;
 export const HUNGER_DRAIN_PER_SEC = 0.85;
 export const ENERGY_DRAIN_PER_SEC = 0.48;
+export const HYGIENE_DRAIN_PER_SEC = 0.28;
+export const FUN_DRAIN_PER_SEC = 0.32;
 
 export function advanceTime(state: GameState, dt: number) {
   state.gameHour += dt / SEC_PER_GAME_HOUR;
@@ -33,6 +35,8 @@ export function advanceTime(state: GameState, dt: number) {
   }
   state.needs.hunger = Math.max(0, state.needs.hunger - dt * HUNGER_DRAIN_PER_SEC);
   state.needs.energy = Math.max(0, state.needs.energy - dt * ENERGY_DRAIN_PER_SEC);
+  state.needs.hygiene = Math.max(0, state.needs.hygiene - dt * HYGIENE_DRAIN_PER_SEC);
+  state.needs.fun = Math.max(0, state.needs.fun - dt * FUN_DRAIN_PER_SEC);
 }
 
 export function formatClock(hour: number): string {

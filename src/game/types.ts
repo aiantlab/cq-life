@@ -3,6 +3,8 @@ export type Mode = 'walk' | 'run' | 'bike' | 'drive';
 export interface Needs {
   hunger: number; // 0..100
   energy: number; // 0..100
+  hygiene: number; // 0..100 — UK Life style
+  fun: number; // 0..100
   cash: number;
 }
 

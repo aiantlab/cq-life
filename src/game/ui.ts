@@ -4,6 +4,8 @@ import { formatClock, dayPhaseLabel } from './systems';
 export class HUD {
   private hunger = document.getElementById('hunger') as HTMLElement;
   private energy = document.getElementById('energy') as HTMLElement;
+  private hygiene = document.getElementById('hygiene') as HTMLElement;
+  private fun = document.getElementById('fun') as HTMLElement;
   private cash = document.getElementById('cash') as HTMLElement;
   private clock = document.getElementById('clock') as HTMLElement;
   private prompt = document.getElementById('prompt') as HTMLElement;
@@ -28,6 +30,8 @@ export class HUD {
     }
     this.setBar(this.hunger, state.needs.hunger);
     this.setBar(this.energy, state.needs.energy);
+    if (this.hygiene) this.setBar(this.hygiene, state.needs.hygiene);
+    if (this.fun) this.setBar(this.fun, state.needs.fun);
     this.cash.textContent = `¥${Math.floor(state.needs.cash)}`;
 
     if (state.needs.hunger < 35 && this.lastHungerShown >= 35) {

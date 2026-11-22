@@ -29,6 +29,8 @@ export interface WorldHandles {
   car: THREE.Group;
   bikeVisual: THREE.Group;
   rackBikes: THREE.Group[];
+  agents: { update: (dt: number, x: number, z: number) => void } | null;
+  mapAttribution: string;
   homeDoor: THREE.Object3D;
   storeDoor: THREE.Object3D;
   spawn: THREE.Vector3;
@@ -182,7 +184,7 @@ function makeCar(): THREE.Group {
 }
 
 /** Jiangbei Beibin Rd — ordinary renovated riverside compound (~30 mid-rises). */
-export function buildWorld(
+export async function buildWorld(
   scene: THREE.Scene,
   onInteract: {
     enterHome: () => void;
@@ -196,8 +198,9 @@ export function buildWorld(
     buyDrink: () => void;
     rentBike: () => void;
     returnBike: () => void;
+    shower: () => void;
   },
-): WorldHandles {
+): Promise<WorldHandles> {
   const group = new THREE.Group();
   scene.add(group);
   const colliders: THREE.Box3[] = [];
@@ -601,6 +604,13 @@ export function buildWorld(
       action: onInteract.changeClothes,
     },
     {
+      id: 'shower',
+      label: '按 E 洗澡（清洁）',
+      position: { x: -21.5, y: 0, z: -1.0 },
+      radius: 1.6,
+      action: onInteract.shower,
+    },
+    {
       id: 'store-enter',
       label: '按 E 进入便利店',
       position: { x: storeX, y: 0, z: storeZ - 4.2 },
@@ -632,7 +642,7 @@ export function buildWorld(
 
 
   // —— 江北北滨路 (primary) + optional 东水门/南滨 ——
-  const beibin = buildBeibinRoad(group, onInteract.rentBike, onInteract.returnBike);
+  const beibin = await buildBeibinRoad(group, onInteract.rentBike, onInteract.returnBike);
   colliders.push(...beibin.colliders);
   lamps.push(...beibin.lamps);
   windowMats.push(...beibin.windowMats);
@@ -664,6 +674,8 @@ export function buildWorld(
     car,
     bikeVisual,
     rackBikes: beibin.bikes,
+    agents: beibin.agents,
+    mapAttribution: beibin.attribution,
     homeDoor,
     storeDoor,
     spawn,
