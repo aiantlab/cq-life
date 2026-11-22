@@ -147,3 +147,31 @@ export function makeGlass(emissive = 0x000000, intensity = 0): THREE.MeshPhysica
     emissiveIntensity: intensity,
   });
 }
+
+export function makeMosaic(base = '#e8eee8', accent = '#5f9e6e'): THREE.MeshStandardMaterial {
+  const [c, ctx] = canvas(256);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 256);
+  const tile = 10;
+  for (let y = 0; y < 256; y += tile) {
+    for (let x = 0; x < 256; x += tile) {
+      const v = Math.random();
+      if (v > 0.72) ctx.fillStyle = accent;
+      else if (v > 0.45) ctx.fillStyle = '#d7e2d8';
+      else ctx.fillStyle = base;
+      // slight green/white china mosaic variation
+      const g = 200 + ((Math.random() * 40) | 0);
+      if (v <= 0.45) ctx.fillStyle = `rgb(${g + 20},${g + 28},${g + 18})`;
+      ctx.fillRect(x + 1, y + 1, tile - 2, tile - 2);
+    }
+  }
+  // occasional green bands (classic renovated Chongqing facade)
+  ctx.fillStyle = 'rgba(70,140,90,0.35)';
+  for (let y = 24; y < 256; y += 64) ctx.fillRect(0, y, 256, 8);
+  noise(ctx, 256, 0.06);
+  const map = new THREE.CanvasTexture(c);
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.repeat.set(4, 6);
+  return new THREE.MeshStandardMaterial({ map, roughness: 0.82, metalness: 0.02 });
+}

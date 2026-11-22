@@ -239,14 +239,14 @@ export class Game {
     if (this.player.mode === 'drive') return;
     this.state.inside = 'home';
     this.homeGroup.visible = true;
-    this.player.position.set(-24, this.player.height, -14.5);
+    this.player.position.set(-18, this.player.height, -1.5);
     this.hud.showToast('回到家了');
   }
 
   private exitHome() {
     this.state.inside = 'outside';
     this.homeGroup.visible = false;
-    this.player.position.set(-24, this.player.height, -13.5);
+    this.player.position.set(-18, this.player.height, 1.0);
     this.hud.showToast('出门');
   }
 
@@ -254,14 +254,14 @@ export class Game {
     if (this.player.mode === 'drive') return;
     this.state.inside = 'store';
     this.storeGroup.visible = true;
-    this.player.position.set(12, this.player.height, 38.5);
+    this.player.position.set(14, this.player.height, 42.5);
     this.hud.showToast('进入便利店');
   }
 
   private exitStore() {
     this.state.inside = 'outside';
     this.storeGroup.visible = false;
-    this.player.position.set(12, this.player.height, 35.5);
+    this.player.position.set(14, this.player.height, 39.5);
     this.hud.showToast('离开便利店');
   }
 
