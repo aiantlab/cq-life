@@ -60,8 +60,8 @@ export function createAgentSystem(
   const walks = sidewalkPaths.length ? sidewalkPaths : [[{ x: -40, z: 58 }, { x: 40, z: 58 }]];
   const roads = roadPaths.length ? roadPaths : [[{ x: -40, z: 48 }, { x: 40, z: 48 }]];
 
-  // ~28 pedestrians
-  for (let n = 0; n < 28; n++) {
+  // ~36 pedestrians
+  for (let n = 0; n < 36; n++) {
     const path = walks[n % walks.length].map((p) => ({ ...p }));
     if (path.length < 2) continue;
     const human = createHumanoid({
@@ -82,14 +82,14 @@ export function createAgentSystem(
     });
   }
 
-  // Limited traffic ~10 cars on Beibin
+  // Limited traffic ~12 cars on Beibin
   const carColors = [0xc45c26, 0xe5e7eb, 0x1e3a8a, 0x111827, 0xb91c1c, 0x365314];
   const mainRoad = roads[0];
-  for (let n = 0; n < 10; n++) {
+  for (let n = 0; n < 12; n++) {
     if (mainRoad.length < 2) break;
     const car = makeCarMesh(carColors[n % carColors.length]);
     const lane = n % 2 === 0 ? -3.2 : 3.2;
-    const t = (n / 10) * (mainRoad.length - 1.01);
+    const t = (n / 12) * (mainRoad.length - 1.01);
     const i = Math.floor(t);
     car.position.set(mainRoad[i].x, 0, mainRoad[i].z + lane);
     group.add(car);
@@ -103,8 +103,25 @@ export function createAgentSystem(
     });
   }
 
+  // Gate / bike-rack crowd so spawn exit always shows people
+  for (let n = 0; n < 10; n++) {
+    const human = createHumanoid({
+      skin: skinTones[(n + 1) % skinTones.length],
+      shirt: shirtColors[(n + 4) % shirtColors.length],
+    });
+    const path = [
+      { x: -12 + n * 1.4, z: 34 },
+      { x: -10 + n * 1.2, z: 46 },
+      { x: -8 + n * 1.1, z: 56 },
+      { x: -10 + n * 1.2, z: 46 },
+    ];
+    human.position.set(path[0].x, 0, path[0].z);
+    group.add(human);
+    peds.push({ root: human, path, i: 0, speed: 1.15 + (n % 3) * 0.1, dir: 1 });
+  }
+
   // Crossing clusters near bike rack / mid Beibin
-  for (let n = 0; n < 6; n++) {
+  for (let n = 0; n < 8; n++) {
     const human = createHumanoid({
       skin: skinTones[(n + 2) % skinTones.length],
       shirt: shirtColors[(n + 3) % shirtColors.length],

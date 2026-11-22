@@ -102,7 +102,7 @@ export class Game {
     this.hud.hideTitle();
     this.canvas.requestPointerLock();
     this.last = performance.now();
-    this.hud.showToast('江北北滨路 — 第三人称角色 · 街上有行人车流 · 可租车', 3.8);
+    this.hud.showToast('角色已就位 — 第三人称可见 · 北滨路行人/车流已加载', 4);
     requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -139,18 +139,39 @@ export class Game {
 
     const ePressed = this.player.consumeKey('KeyE');
 
+    // HARD GATE: visible third-person body in walk/run/bike/drive (never freecam-only)
     if (this.player.mode === 'drive') {
       this.player.updateDrive(dt, this.world.car, this.world.colliders);
-      this.playerMesh.visible = false;
       this.world.bikeVisual.visible = false;
+      this.playerMesh.visible = true;
+      // Sit pose inside car cabin
+      this.playerMesh.position.set(
+        this.player.position.x,
+        this.player.groundY + 0.35,
+        this.player.position.z,
+      );
+      this.playerMesh.rotation.y = this.player.carYaw;
+      this.playerMesh.scale.setScalar(0.92);
+      animateHumanoid(this.playerMesh, 0, dt, false);
     } else if (this.player.mode === 'bike') {
       this.player.updateBike(dt, this.world.bikeVisual, this.world.colliders);
-      this.playerMesh.visible = false;
+      this.world.bikeVisual.visible = true;
+      this.playerMesh.visible = true;
+      // Rider on bike
+      this.playerMesh.position.set(
+        this.player.position.x,
+        this.player.groundY + 0.55,
+        this.player.position.z,
+      );
+      this.playerMesh.rotation.y = this.player.carYaw;
+      this.playerMesh.scale.setScalar(0.95);
+      const spd = Math.hypot(this.player.velocity.x, this.player.velocity.z);
+      animateHumanoid(this.playerMesh, Math.min(spd, 4), dt, false);
     } else {
       this.player.updateWalk(dt, this.activeColliders());
       this.state.mode = this.player.mode;
-      // Visible third-person body (not freecam)
-      this.playerMesh.visible = this.state.inside === 'outside';
+      this.playerMesh.visible = true;
+      this.playerMesh.scale.setScalar(1);
       this.playerMesh.position.set(this.player.position.x, this.player.groundY, this.player.position.z);
       this.playerMesh.rotation.y = this.player.yaw;
       const spd = Math.hypot(this.player.velocity.x, this.player.velocity.z);
