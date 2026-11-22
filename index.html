@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CQ Life — 重庆南岸生活切片 v0.1</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div id="topbar">
+          <div class="brand">CQ Life <span>南岸 · 切片1</span></div>
+          <div id="clock">06:00</div>
+        </div>
+        <div id="needs">
+          <div class="need"><label>饥饿</label><div class="bar"><i id="hunger"></i></div></div>
+          <div class="need"><label>精力</label><div class="bar"><i id="energy"></i></div></div>
+          <div class="need"><label>现金</label><div class="cash" id="cash">¥120</div></div>
+        </div>
+        <div id="prompt" class="hidden"></div>
+        <div id="toast" class="hidden"></div>
+        <div id="hint">
+          WASD 移动 · Shift 跑 · 鼠标环视 · E 互动 · F 上车/下车 · Esc 释放鼠标
+        </div>
+      </div>
+      <div id="title">
+        <div class="panel">
+          <h1>重庆南岸 · 生活切片</h1>
+          <p>普通住宅小区 + 门岗外便利店。走路、开车、回家吃饭睡觉换衣、便利店购物，过完一天。</p>
+          <ul>
+            <li>点击画面锁定鼠标后开始</li>
+            <li>桌面浏览器推荐 Chrome / Edge</li>
+          </ul>
+          <button id="startBtn" type="button">开始一天</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
