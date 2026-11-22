@@ -41,7 +41,7 @@ npm run preview
 ## 技术
 
 - Vite + TypeScript + Three.js
-- `@dimforge/rapier3d-compat`（物理世界已初始化；角色/车本切片用轻量 AABB 碰撞保证可玩帧率）
+- 角色/车：AABB 碰撞 + 桥面高度场（smoothstep 坡道）；已去掉未参与手感的 Rapier 以减包体/卡顿
 - 程序化 Canvas 纹理（湿柏油、白绿马赛克、抹灰、草地等），无第三方模型包
 
 ## 资源与许可
@@ -78,3 +78,14 @@ npm run preview
 3. **NPC**：行为树 / 日程表，对话后接可选 LLM。
 
 独立仓库，不写入 canno3D / OutFitrev。
+
+
+## 手感调参（v0.2.1）
+
+| 项 | 值 | 说明 |
+|---|---|---|
+| `SEC_PER_GAME_HOUR` | 7 | 约 2.8 分钟现实 ≈ 一天；探索时天空变化可感 |
+| `HUNGER_DRAIN_PER_SEC` | 0.85 | 饥饿条下降明显，低阈值 toast |
+| `ENERGY_DRAIN_PER_SEC` | 0.48 | 精力较慢；饿到 0 时加速掉 |
+| 相机 | damp follow | 桥上 Y 轴更软，减轻眩晕 |
+| 江面 Reflector | 512×256，远距关闭 | 保夜景倒影、控帧率 |

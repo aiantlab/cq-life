@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import type { Mode } from './types';
-import { sampleGround, overRiver, onBridgeDeck, WORLD_BOUNDS } from './ground';
+import { sampleGround, sampleSlopePitch, overRiver, onBridgeDeck, WORLD_BOUNDS } from './ground';
+
+const _wish = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _camPos = new THREE.Vector3();
+const _camTarget = new THREE.Vector3();
+const _look = new THREE.Vector3();
+const _back = new THREE.Vector3();
 
 export class PlayerController {
   mode: Mode = 'walk';
@@ -12,15 +20,25 @@ export class PlayerController {
   radius = 0.35;
   onGround = true;
   carYaw = Math.PI;
+  /** Smoothed ground follow — kills bridge height jitter. */
+  groundY = 0;
+  private camPos = new THREE.Vector3();
+  private camTarget = new THREE.Vector3();
+  private camInitialized = false;
+  private carPitch = 0;
 
   private keys = new Set<string>();
   private canvas: HTMLCanvasElement;
   private pointerLocked = false;
+  private bodyBox = new THREE.Box3();
+  private bodyCenter = new THREE.Vector3();
+  private bodySize = new THREE.Vector3();
 
   constructor(canvas: HTMLCanvasElement, spawn: THREE.Vector3) {
     this.canvas = canvas;
     this.position.copy(spawn);
-    this.position.y = this.height + sampleGround(spawn.x, spawn.z);
+    this.groundY = sampleGround(spawn.x, spawn.z);
+    this.position.y = this.height + this.groundY;
 
     window.addEventListener('keydown', (e) => {
       this.keys.add(e.code);
@@ -34,10 +52,10 @@ export class PlayerController {
       this.pointerLocked = document.pointerLockElement === canvas;
     });
     document.addEventListener('mousemove', (e) => {
-      if (!this.pointerLocked) return;
-      this.yaw -= e.movementX * 0.0022;
-      this.pitch -= e.movementY * 0.0020;
-      this.pitch = Math.max(-1.2, Math.min(1.2, this.pitch));
+      if (!this.pointerLocked || this.mode === 'drive') return;
+      this.yaw -= e.movementX * 0.0020;
+      this.pitch -= e.movementY * 0.0018;
+      this.pitch = Math.max(-1.15, Math.min(1.15, this.pitch));
     });
   }
 
@@ -47,121 +65,175 @@ export class PlayerController {
     return true;
   }
 
+  /** Peek without consuming — for “E with nothing nearby” feedback. */
+  isKeyJustLogic(code: string) {
+    return this.keys.has(code);
+  }
+
   isDown(code: string) {
     return this.keys.has(code);
   }
 
   get lookDir(): THREE.Vector3 {
     const c = Math.cos(this.pitch);
-    return new THREE.Vector3(-Math.sin(this.yaw) * c, Math.sin(this.pitch), -Math.cos(this.yaw) * c);
+    return _look.set(-Math.sin(this.yaw) * c, Math.sin(this.pitch), -Math.cos(this.yaw) * c);
   }
 
   get forwardFlat(): THREE.Vector3 {
-    return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
+    return _fwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
   }
 
   get rightFlat(): THREE.Vector3 {
-    return new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
+    return _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
   }
 
   updateWalk(dt: number, colliders: THREE.Box3[]) {
     const run = this.isDown('ShiftLeft') || this.isDown('ShiftRight');
-    const speed = run ? 6.2 : 3.6;
-    const wish = new THREE.Vector3();
-    if (this.isDown('KeyW') || this.isDown('ArrowUp')) wish.add(this.forwardFlat);
-    if (this.isDown('KeyS') || this.isDown('ArrowDown')) wish.sub(this.forwardFlat);
-    if (this.isDown('KeyA') || this.isDown('ArrowLeft')) wish.sub(this.rightFlat);
-    if (this.isDown('KeyD') || this.isDown('ArrowRight')) wish.add(this.rightFlat);
-    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
-    this.velocity.x = THREE.MathUtils.damp(this.velocity.x, wish.x, 12, dt);
-    this.velocity.z = THREE.MathUtils.damp(this.velocity.z, wish.z, 12, dt);
+    const maxSpeed = run ? 6.8 : 3.9;
+    _wish.set(0, 0, 0);
+    if (this.isDown('KeyW') || this.isDown('ArrowUp')) _wish.add(this.forwardFlat);
+    if (this.isDown('KeyS') || this.isDown('ArrowDown')) _wish.sub(this.forwardFlat);
+    if (this.isDown('KeyA') || this.isDown('ArrowLeft')) _wish.sub(this.rightFlat);
+    if (this.isDown('KeyD') || this.isDown('ArrowRight')) _wish.add(this.rightFlat);
+    const hasWish = _wish.lengthSq() > 0;
+    if (hasWish) _wish.normalize().multiplyScalar(maxSpeed);
+
+    // Snappier accel when pressing, firmer stop when releasing
+    const resp = hasWish ? 16 : 22;
+    this.velocity.x = THREE.MathUtils.damp(this.velocity.x, _wish.x, resp, dt);
+    this.velocity.z = THREE.MathUtils.damp(this.velocity.z, _wish.z, resp, dt);
     this.velocity.y = 0;
 
-    this.moveWithColliders(dt, colliders, this.radius);
-    const g = sampleGround(this.position.x, this.position.z);
-    this.position.y = this.height + g;
+    this.moveSubsteps(dt, colliders, this.radius, 3);
+    this.smoothGround(dt, 18);
+    this.position.y = this.height + this.groundY;
   }
 
   updateDrive(dt: number, car: THREE.Group, colliders: THREE.Box3[]) {
     let throttle = 0;
     if (this.isDown('KeyW') || this.isDown('ArrowUp')) throttle += 1;
-    if (this.isDown('KeyS') || this.isDown('ArrowDown')) throttle -= 1;
+    if (this.isDown('KeyS') || this.isDown('ArrowDown')) throttle -= 0.7;
     let steer = 0;
     if (this.isDown('KeyA') || this.isDown('ArrowLeft')) steer += 1;
     if (this.isDown('KeyD') || this.isDown('ArrowRight')) steer -= 1;
 
-    const maxSpeed = 16;
-    const accel = 10;
-    const target = throttle * maxSpeed;
-    const forwardSpeed = this.velocity.dot(
-      new THREE.Vector3(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw)),
-    );
-    const newSpeed = THREE.MathUtils.damp(forwardSpeed, target, accel * 0.35, dt);
-    if (Math.abs(newSpeed) > 0.4) {
-      this.carYaw += steer * dt * 1.45 * Math.sign(newSpeed);
-    }
-    const dir = new THREE.Vector3(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
-    this.velocity.copy(dir.multiplyScalar(newSpeed));
-    if (throttle === 0) {
-      this.velocity.multiplyScalar(Math.max(0, 1 - dt * 1.8));
+    const maxSpeed = 18;
+    _fwd.set(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
+    const forwardSpeed = this.velocity.dot(_fwd);
+    // Clear accel / engine brake
+    let target = throttle * maxSpeed;
+    if (throttle === 0) target = 0;
+    const rate = throttle !== 0 ? 5.5 : 7.5; // accel vs coast/brake feel
+    const newSpeed = THREE.MathUtils.damp(forwardSpeed, target, rate, dt);
+
+    const speedFactor = THREE.MathUtils.clamp(Math.abs(newSpeed) / maxSpeed, 0.15, 1);
+    if (Math.abs(newSpeed) > 0.25) {
+      this.carYaw += steer * dt * (1.85 - 0.7 * speedFactor) * Math.sign(newSpeed || 1);
     }
 
-    this.moveWithColliders(dt, colliders, 1.1);
-    const g = sampleGround(this.position.x, this.position.z);
-    this.position.y = 0.9 + g;
-    car.position.set(this.position.x, g, this.position.z);
+    _fwd.set(-Math.sin(this.carYaw), 0, -Math.cos(this.carYaw));
+    this.velocity.copy(_fwd.multiplyScalar(newSpeed));
+
+    this.moveSubsteps(dt, colliders, 1.05, 4);
+    this.smoothGround(dt, 20);
+    this.position.y = 0.9 + this.groundY;
+
+    const slope = sampleSlopePitch(this.position.x, this.position.z);
+    this.carPitch = THREE.MathUtils.damp(this.carPitch, slope, 10, dt);
+
+    car.position.set(this.position.x, this.groundY, this.position.z);
+    car.rotation.order = 'YXZ';
     car.rotation.y = this.carYaw;
+    car.rotation.x = this.carPitch;
     this.yaw = this.carYaw;
   }
 
-  private moveWithColliders(dt: number, colliders: THREE.Box3[], radius: number) {
-    const next = this.position.clone().addScaledVector(this.velocity, dt);
+  private smoothGround(dt: number, lambda: number) {
+    const target = sampleGround(this.position.x, this.position.z);
+    // Hard snap only when nearly flat-to-flat; otherwise damp
+    if (Math.abs(target - this.groundY) > 2.5) {
+      // still damp aggressively rather than teleport (prevents nausea)
+      this.groundY = THREE.MathUtils.damp(this.groundY, target, lambda * 2.2, dt);
+    } else {
+      this.groundY = THREE.MathUtils.damp(this.groundY, target, lambda, dt);
+    }
+  }
 
-    const tryX = this.position.clone();
-    tryX.x = next.x;
-    if (!this.hits(tryX, colliders, radius) && this.traversable(tryX.x, tryX.z)) this.position.x = tryX.x;
+  private moveSubsteps(dt: number, colliders: THREE.Box3[], radius: number, steps: number) {
+    const stepDt = dt / steps;
+    for (let i = 0; i < steps; i++) this.moveWithColliders(stepDt, colliders, radius);
+  }
+
+  private moveWithColliders(dt: number, colliders: THREE.Box3[], radius: number) {
+    const nextX = this.position.x + this.velocity.x * dt;
+    const nextZ = this.position.z + this.velocity.z * dt;
+
+    if (this.canOccupy(nextX, this.position.z, colliders, radius)) this.position.x = nextX;
     else this.velocity.x = 0;
 
-    const tryZ = this.position.clone();
-    tryZ.z = next.z;
-    if (!this.hits(tryZ, colliders, radius) && this.traversable(tryZ.x, tryZ.z)) this.position.z = tryZ.z;
+    if (this.canOccupy(this.position.x, nextZ, colliders, radius)) this.position.z = nextZ;
     else this.velocity.z = 0;
 
     this.position.x = THREE.MathUtils.clamp(this.position.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
     this.position.z = THREE.MathUtils.clamp(this.position.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
   }
 
-  private traversable(x: number, z: number) {
+  private canOccupy(x: number, z: number, colliders: THREE.Box3[], radius: number) {
     if (overRiver(x, z) && !onBridgeDeck(x, z)) return false;
-    return true;
+    return !this.hits(x, z, colliders, radius);
   }
 
-  private hits(pos: THREE.Vector3, colliders: THREE.Box3[], radius: number) {
-    const g = sampleGround(pos.x, pos.z);
-    const body = new THREE.Box3().setFromCenterAndSize(
-      new THREE.Vector3(pos.x, g + 1.0, pos.z),
-      new THREE.Vector3(radius * 2, 1.8, radius * 2),
-    );
-    for (const c of colliders) {
-      if (body.intersectsBox(c)) return true;
+  private hits(x: number, z: number, colliders: THREE.Box3[], radius: number) {
+    const g = sampleGround(x, z);
+    this.bodyCenter.set(x, g + 1.0, z);
+    this.bodySize.set(radius * 2, 1.75, radius * 2);
+    this.bodyBox.setFromCenterAndSize(this.bodyCenter, this.bodySize);
+    for (let i = 0; i < colliders.length; i++) {
+      if (this.bodyBox.intersectsBox(colliders[i])) return true;
     }
     return false;
   }
 
-  applyCamera(camera: THREE.PerspectiveCamera) {
-    const g = sampleGround(this.position.x, this.position.z);
+  applyCamera(camera: THREE.PerspectiveCamera, dt: number) {
     if (this.mode === 'walk') {
-      camera.position.copy(this.position);
-      const target = this.position.clone().add(this.lookDir);
-      camera.lookAt(target);
+      _camPos.copy(this.position);
+      _camTarget.copy(this.position).add(this.lookDir);
     } else {
-      const back = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
-      camera.position.set(
-        this.position.x + back.x * 8.5,
-        g + 4.2,
-        this.position.z + back.z * 8.5,
+      _back.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+      _camPos.set(
+        this.position.x + _back.x * 8.8,
+        this.groundY + 4.0,
+        this.position.z + _back.z * 8.8,
       );
-      camera.lookAt(this.position.x, g + 1.4, this.position.z);
+      _camTarget.set(this.position.x, this.groundY + 1.35, this.position.z);
     }
+
+    if (!this.camInitialized) {
+      this.camPos.copy(_camPos);
+      this.camTarget.copy(_camTarget);
+      this.camInitialized = true;
+    } else {
+      // Stronger follow on XZ, slightly softer on Y to kill bridge bob
+      this.camPos.x = THREE.MathUtils.damp(this.camPos.x, _camPos.x, 14, dt);
+      this.camPos.z = THREE.MathUtils.damp(this.camPos.z, _camPos.z, 14, dt);
+      this.camPos.y = THREE.MathUtils.damp(this.camPos.y, _camPos.y, 10, dt);
+      this.camTarget.x = THREE.MathUtils.damp(this.camTarget.x, _camTarget.x, 16, dt);
+      this.camTarget.z = THREE.MathUtils.damp(this.camTarget.z, _camTarget.z, 16, dt);
+      this.camTarget.y = THREE.MathUtils.damp(this.camTarget.y, _camTarget.y, 12, dt);
+    }
+
+    camera.position.copy(this.camPos);
+    camera.lookAt(this.camTarget);
+  }
+
+  /** Call after teleport (home/store) so camera/ground don't lerp from old place. */
+  snapTo(x: number, z: number, yaw?: number) {
+    this.position.x = x;
+    this.position.z = z;
+    this.groundY = sampleGround(x, z);
+    this.position.y = this.height + this.groundY;
+    this.velocity.set(0, 0, 0);
+    if (yaw !== undefined) this.yaw = yaw;
+    this.camInitialized = false;
   }
 }

@@ -85,3 +85,10 @@ canvas#game { display: block; width: 100%; height: 100%; }
   font-weight: 700; font-size: 15px; cursor: pointer;
 }
 #startBtn:hover { filter: brightness(1.05); }
+
+#prompt.pulse { animation: promptIn 0.28s ease-out; }
+@keyframes promptIn {
+  from { transform: translateX(-50%) translateY(6px); opacity: 0.2; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+#clock { min-width: 118px; text-align: center; }

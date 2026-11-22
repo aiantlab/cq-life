@@ -6,7 +6,7 @@ async function boot() {
   const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
   const game = new Game(canvas);
   startBtn.disabled = true;
-  startBtn.textContent = '加载物理引擎…';
+  startBtn.textContent = '加载场景…';
   try {
     await game.init();
     startBtn.disabled = false;

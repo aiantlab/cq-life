@@ -136,8 +136,9 @@ export function buildNanbinCorridor(parent: THREE.Object3D): NanbinExtras {
   const waterGeo = new THREE.PlaneGeometry(210, 48, 1, 1);
   const waterReflector = new Reflector(waterGeo, {
     clipBias: 0.003,
-    textureWidth: Math.min(1024, typeof window !== 'undefined' ? window.innerWidth : 1024),
-    textureHeight: Math.min(512, typeof window !== 'undefined' ? Math.floor(window.innerHeight / 2) : 512),
+    // Feel/FPS: half-res reflection is enough for wet river read at night
+    textureWidth: 512,
+    textureHeight: 256,
     color: 0x1a3348,
   });
   waterReflector.rotation.x = -Math.PI / 2;
@@ -326,12 +327,13 @@ export function buildNanbinCorridor(parent: THREE.Object3D): NanbinExtras {
     bi++;
   }
 
-  // Second row slightly taller towers for density
+  // Second row slightly taller towers for density (no castShadow — FPS)
   for (let x = -70; x <= 70; x += 18) {
     const floors = 14 + (Math.abs(x) % 5);
     const h = floors * 3.2;
     const z = 178;
-    box(10, h, 10, plasterDark, x, h / 2, z, parent, colliders);
+    const tower = box(10, h, 10, plasterDark, x, h / 2, z, parent, colliders);
+    tower.castShadow = false;
     facadeWindows(parent, windowMats, x, z, 10, 10, Math.min(floors, 12), 'z-');
     const neon = new THREE.MeshStandardMaterial({
       color: 0xffb454,

@@ -1,7 +1,7 @@
 {
   "name": "cq-life",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,6 @@
     "wrangler": "^4.166.0"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.21.0",
     "@types/three": "^0.187.0",
     "three": "^0.187.0"
   },
