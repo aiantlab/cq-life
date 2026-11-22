@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CQ Life — 江北北滨路</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
+    <script type="module" crossorigin src="./assets/index-DWvCIKso.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D_AushxS.css">
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div id="topbar">
+          <div class="brand">CQ Life <span>江北 · 北滨路</span></div>
+          <div id="mode" data-mode="walk">步行</div>
+          <div id="clock">06:00</div>
+        </div>
+        <div id="needs">
+          <div class="need"><label>饥饿</label><div class="bar"><i id="hunger"></i></div></div>
+          <div class="need"><label>精力</label><div class="bar"><i id="energy"></i></div></div>
+          <div class="need"><label>清洁</label><div class="bar"><i id="hygiene"></i></div></div>
+          <div class="need"><label>心情</label><div class="bar"><i id="fun"></i></div></div>
+          <div class="need"><label>现金</label><div class="cash" id="cash">¥120</div></div>
+        </div>
+        <div id="prompt" class="hidden"></div>
+        <div id="toast" class="hidden"></div>
+        <div id="hint">
+          WASD 移动 · Shift 跑步 · E 互动/租车 · F 上车·骑车·下车 · 北滨路骑行
+        </div>
+        <div id="osm-attr">© OpenStreetMap contributors · ODbL · Worldfolk-method Beibin</div>
+      </div>
+      <div id="title">
+        <div class="panel">
+          <h1>江北北滨路 · 生活切片</h1>
+          <p>Worldfolk 方法：OSM 道路网 + 地名 + 真实地理 3D。第三人称可见。小区出门走路/跑步/租车/开车；北滨行人与车流。UK Life 需求循环。</p>
+          <ul>
+            <li>第三人称身体全程可见（步行·跑步·骑行·驾车）</li>
+            <li>北滨路行人 + 有限车流 · 绿色租车站 · Shift 跑步 · 小地图</li>
+            <li>© OpenStreetMap · beibin-v1 streets/places/layers（非 Accra 换皮）</li>
+          </ul>
+          <button id="startBtn" type="button">开始一天</button>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

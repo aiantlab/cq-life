@@ -1,0 +1,6 @@
+CHARACTER_GATE=pass
+player=third-person-humanoid-all-modes
+peds=sidewalk+gate+crossing
+traffic=limited-beibin
+models=procedural-original-commercial-ok
+map=beibin-v1-worldfolk-method
